@@ -82,6 +82,11 @@ class StatusManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        codexHookWatcher.$compactCommand
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.recomputePresentation() }
+            .store(in: &cancellables)
+
         codexHookWatcher.$activeTurnCount
             .receive(on: DispatchQueue.main)
             .sink { [weak self] count in
@@ -168,6 +173,18 @@ class StatusManager: ObservableObject {
     }
 
     private func recomputePresentation() {
+        if let hookCommand = codexHookWatcher.compactCommand {
+            switch hookCommand.phase {
+            case .active:
+                compactPresentation = .active(hookCommand.category, hookCommand.name)
+            case .recent:
+                compactPresentation = .recent(hookCommand.category, hookCommand.name)
+            case .burst:
+                compactPresentation = .burst(hookCommand.count, hookCommand.category)
+            }
+            return
+        }
+
         if let cmd = processMonitor.activeCommands.last {
             compactPresentation = .active(cmd.category, cmd.compactName)
             return

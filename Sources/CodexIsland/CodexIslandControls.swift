@@ -8,7 +8,30 @@ enum CodexIslandControls {
         NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist"
     }
 
-    static func isAutoStartEnabled() -> Bool {
+    static func refreshAutoStartEnabled(completion: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            let enabled = isAutoStartEnabledSync()
+            DispatchQueue.main.async {
+                completion(enabled)
+            }
+        }
+    }
+
+    static func setAutoStartEnabled(_ enabled: Bool, completion: @escaping (Bool) -> Void) {
+        DispatchQueue.global(qos: .utility).async {
+            setAutoStartEnabledSync(enabled)
+            let confirmed = isAutoStartEnabledSync()
+            DispatchQueue.main.async {
+                completion(confirmed)
+            }
+        }
+    }
+
+    static func quit() {
+        NSApp.terminate(nil)
+    }
+
+    private static func isAutoStartEnabledSync() -> Bool {
         guard FileManager.default.fileExists(atPath: launchAgentPath) else { return false }
         let output = runLaunchctl(arguments: ["print-disabled", "gui/\(getuid())"])
         if output.contains("\"\(label)\" => disabled") {
@@ -17,7 +40,7 @@ enum CodexIslandControls {
         return true
     }
 
-    static func setAutoStartEnabled(_ enabled: Bool) {
+    private static func setAutoStartEnabledSync(_ enabled: Bool) {
         if enabled {
             ensureLaunchAgentPlist()
             _ = runLaunchctl(arguments: ["enable", "gui/\(getuid())/\(label)"])
@@ -25,10 +48,6 @@ enum CodexIslandControls {
         } else {
             _ = runLaunchctl(arguments: ["disable", "gui/\(getuid())/\(label)"])
         }
-    }
-
-    static func quit() {
-        NSApp.terminate(nil)
     }
 
     private static func ensureLaunchAgentPlist() {

@@ -8,6 +8,7 @@ class CodexHookWatcher: ObservableObject {
     private static let logger = Logger(subsystem: "com.codexisland", category: "codex-hook")
 
     @Published var currentState: AGWorkState = .idle
+    @Published var compactCommand: HookCommandPresentation?
     @Published var recentToolCalls: [ToolCallRecord] = []
     @Published var isTurnActive = false
     @Published var activeTurnCount = 0
@@ -21,7 +22,23 @@ class CodexHookWatcher: ObservableObject {
     private var activeSessionIDs = Set<String>()
     private var pendingSessionStops: [String: DispatchWorkItem] = [:]
     private var pendingSessionExpirations: [String: DispatchWorkItem] = [:]
+    private var runningHookCommands: [String: RunningHookCommand] = [:]
+    private var activeExpiryWork: [String: DispatchWorkItem] = [:]
+    private var shortHookTimes: [Date] = []
+    private var hookDisplayDismissWork: DispatchWorkItem?
     private let orphanSessionTimeout: TimeInterval = 180
+    private let shortCommandDisplayDuration: TimeInterval = 1.0
+    private let hookBurstWindow: TimeInterval = 1.0
+    private let maxHookActiveDuration: TimeInterval = 180.0
+
+    private struct RunningHookCommand {
+        let id: String
+        let command: String
+        let displayName: String
+        let compactName: String
+        let category: ProcessMonitor.CommandCategory
+        let startTime: Date
+    }
 
     init(eventsDir: String = NSHomeDirectory() + "/.codex-island") {
         self.eventsDir = eventsDir
@@ -34,6 +51,8 @@ class CodexHookWatcher: ObservableObject {
         stopWatching()
         pendingSessionStops.values.forEach { $0.cancel() }
         pendingSessionExpirations.values.forEach { $0.cancel() }
+        activeExpiryWork.values.forEach { $0.cancel() }
+        hookDisplayDismissWork?.cancel()
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -45,9 +64,16 @@ class CodexHookWatcher: ObservableObject {
                 self.pendingSessionStops.removeAll()
                 self.pendingSessionExpirations.values.forEach { $0.cancel() }
                 self.pendingSessionExpirations.removeAll()
+                self.activeExpiryWork.values.forEach { $0.cancel() }
+                self.activeExpiryWork.removeAll()
+                self.hookDisplayDismissWork?.cancel()
+                self.hookDisplayDismissWork = nil
                 self.activeSessionIDs.removeAll()
+                self.runningHookCommands.removeAll()
+                self.shortHookTimes.removeAll()
                 DispatchQueue.main.async {
                     self.currentState = .idle
+                    self.compactCommand = nil
                     self.recentToolCalls = []
                     self.isTurnActive = false
                     self.activeTurnCount = 0
@@ -134,6 +160,7 @@ class CodexHookWatcher: ObservableObject {
     private func handleEvent(_ event: [String: Any]) {
         let name = (event["event"] as? String) ?? (event["hook_event_name"] as? String) ?? ""
         let sessionKey = sessionKey(from: event)
+        let timestamp = eventDate(from: event)
 
         switch name {
         case "UserPromptSubmit":
@@ -141,21 +168,40 @@ class CodexHookWatcher: ObservableObject {
             publishState(.thinking)
 
         case "Stop":
+            clearRunningHookCommands()
             publishState(activeSessionIDs.count <= 1 ? .completed : .thinking)
             scheduleSessionCompletion(sessionKey)
 
         case "PreToolUse":
             guard let command = commandString(from: event), !command.isEmpty else { return }
-            let displayName = compactCommandName(command)
+            let displayName = displayCommandName(command)
+            let compactName = compactCommandName(command)
             let category = ProcessMonitor.categorizeCommand(command)
             markSessionActive(sessionKey)
-            publishState(.executing(.executing, displayName))
-            addRecord(displayName, icon: category.icon, color: category.color, status: "running")
+            beginHookCommand(
+                id: toolUseID(from: event, command: command, timestamp: timestamp),
+                command: command,
+                displayName: displayName,
+                compactName: compactName,
+                category: category,
+                timestamp: timestamp
+            )
+            publishState(.executing(category, displayName))
+            addRecord(displayName, icon: category.icon, color: category.color, status: "running", timestamp: timestamp)
 
         case "PostToolUse":
             guard let command = commandString(from: event), !command.isEmpty else { return }
+            let displayName = displayCommandName(command)
+            let compactName = compactCommandName(command)
             let category = ProcessMonitor.categorizeCommand(command)
-            addRecord(compactCommandName(command), icon: category.icon, color: category.color, status: "completed")
+            finishHookCommand(
+                id: toolUseID(from: event, command: command, timestamp: timestamp),
+                command: command,
+                compactName: compactName,
+                category: category,
+                timestamp: timestamp
+            )
+            addRecord(displayName, icon: category.icon, color: category.color, status: "completed", timestamp: timestamp)
             refreshSessionExpiration(sessionKey)
             publishState(activeSessionIDs.isEmpty ? .completed : .thinking)
 
@@ -220,9 +266,113 @@ class CodexHookWatcher: ObservableObject {
         }
     }
 
-    private func addRecord(_ name: String, icon: String, color: Color, status: String) {
+    private func beginHookCommand(
+        id: String,
+        command: String,
+        displayName: String,
+        compactName: String,
+        category: ProcessMonitor.CommandCategory,
+        timestamp: Date
+    ) {
+        hookDisplayDismissWork?.cancel()
+        hookDisplayDismissWork = nil
+
+        let run = RunningHookCommand(
+            id: id,
+            command: command,
+            displayName: displayName,
+            compactName: compactName,
+            category: category,
+            startTime: timestamp
+        )
+        runningHookCommands[id] = run
+        publishHookCommand(.active(category, compactName, timestamp: timestamp))
+        scheduleActiveExpiry(for: id)
+    }
+
+    private func finishHookCommand(id: String, command: String, compactName: String, category: ProcessMonitor.CommandCategory, timestamp: Date) {
+        activeExpiryWork[id]?.cancel()
+        activeExpiryWork[id] = nil
+
+        guard let run = runningHookCommands.removeValue(forKey: id) else {
+            recordShortHookCommand(compactName: compactName, category: category, timestamp: timestamp, displayDuration: shortCommandDisplayDuration)
+            return
+        }
+
+        let duration = max(0, timestamp.timeIntervalSince(run.startTime))
+        if duration < shortCommandDisplayDuration {
+            recordShortHookCommand(
+                compactName: run.compactName,
+                category: run.category,
+                timestamp: timestamp,
+                displayDuration: shortCommandDisplayDuration - duration
+            )
+        } else {
+            publishBestHookCommand()
+        }
+    }
+
+    private func recordShortHookCommand(compactName: String, category: ProcessMonitor.CommandCategory, timestamp: Date, displayDuration: TimeInterval) {
+        shortHookTimes.append(timestamp)
+        shortHookTimes = shortHookTimes.filter { timestamp.timeIntervalSince($0) < hookBurstWindow }
+
+        if shortHookTimes.count >= 3 {
+            publishHookCommand(.burst(category, compactName, count: shortHookTimes.count, timestamp: timestamp))
+        } else {
+            publishHookCommand(.recent(category, compactName, timestamp: timestamp))
+        }
+
+        scheduleHookDismiss(after: max(0.2, displayDuration))
+    }
+
+    private func scheduleActiveExpiry(for id: String) {
+        activeExpiryWork[id]?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.activeExpiryWork[id] = nil
+            self.runningHookCommands.removeValue(forKey: id)
+            self.publishBestHookCommand()
+        }
+        activeExpiryWork[id] = work
+        serialQueue.asyncAfter(deadline: .now() + maxHookActiveDuration, execute: work)
+    }
+
+    private func scheduleHookDismiss(after delay: TimeInterval) {
+        hookDisplayDismissWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.hookDisplayDismissWork = nil
+            self.shortHookTimes.removeAll()
+            self.publishBestHookCommand()
+        }
+        hookDisplayDismissWork = work
+        serialQueue.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func publishBestHookCommand() {
+        if let latest = runningHookCommands.values.max(by: { $0.startTime < $1.startTime }) {
+            publishHookCommand(.active(latest.category, latest.compactName, timestamp: latest.startTime))
+        } else {
+            publishHookCommand(nil)
+        }
+    }
+
+    private func clearRunningHookCommands() {
+        activeExpiryWork.values.forEach { $0.cancel() }
+        activeExpiryWork.removeAll()
+        runningHookCommands.removeAll()
+        publishBestHookCommand()
+    }
+
+    private func publishHookCommand(_ presentation: HookCommandPresentation?) {
+        DispatchQueue.main.async { [weak self] in
+            self?.compactCommand = presentation
+        }
+    }
+
+    private func addRecord(_ name: String, icon: String, color: Color, status: String, timestamp: Date) {
         let record = ToolCallRecord(
-            timestamp: Date(),
+            timestamp: timestamp,
             toolName: name,
             icon: icon,
             color: color,
@@ -260,8 +410,49 @@ class CodexHookWatcher: ObservableObject {
         return "unknown"
     }
 
-    private func compactCommandName(_ command: String) -> String {
+    private func toolUseID(from event: [String: Any], command: String, timestamp: Date) -> String {
+        if let value = event["tool_use_id"] as? String, !value.isEmpty {
+            return value
+        }
+        if let value = event["tool_call_id"] as? String, !value.isEmpty {
+            return value
+        }
+        return "\(sessionKey(from: event)):\(command):\(timestamp.timeIntervalSince1970)"
+    }
+
+    private func eventDate(from event: [String: Any]) -> Date {
+        if let timestamp = event["timestamp"] as? Double {
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        if let timestamp = event["timestamp"] as? NSNumber {
+            return Date(timeIntervalSince1970: timestamp.doubleValue)
+        }
+        if let timestamp = event["timestamp"] as? String, let value = Double(timestamp) {
+            return Date(timeIntervalSince1970: value)
+        }
+        return Date()
+    }
+
+    private func displayCommandName(_ command: String) -> String {
         CommandDisplayFormatter.displayName(command)
+    }
+
+    private func compactCommandName(_ command: String) -> String {
+        CommandDisplayFormatter.compactName(command)
+    }
+}
+
+private extension HookCommandPresentation {
+    static func active(_ category: ProcessMonitor.CommandCategory, _ name: String, timestamp: Date) -> HookCommandPresentation {
+        HookCommandPresentation(phase: .active, category: category, name: name, count: 1, timestamp: timestamp)
+    }
+
+    static func recent(_ category: ProcessMonitor.CommandCategory, _ name: String, timestamp: Date) -> HookCommandPresentation {
+        HookCommandPresentation(phase: .recent, category: category, name: name, count: 1, timestamp: timestamp)
+    }
+
+    static func burst(_ category: ProcessMonitor.CommandCategory, _ name: String, count: Int, timestamp: Date) -> HookCommandPresentation {
+        HookCommandPresentation(phase: .burst, category: category, name: name, count: count, timestamp: timestamp)
     }
 }
 

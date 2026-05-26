@@ -98,6 +98,21 @@ enum CompactPresentation: Equatable {
     }
 }
 
+// MARK: - Hook 驱动的 compact 命令展示
+struct HookCommandPresentation: Equatable {
+    enum Phase: Equatable {
+        case active
+        case recent
+        case burst
+    }
+
+    let phase: Phase
+    let category: ProcessMonitor.CommandCategory
+    let name: String
+    let count: Int
+    let timestamp: Date
+}
+
 // MARK: - 工具调用记录
 struct ToolCallRecord: Identifiable {
     let id = UUID()

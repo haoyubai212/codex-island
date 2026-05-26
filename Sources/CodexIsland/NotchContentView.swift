@@ -12,7 +12,8 @@ struct NotchContentView: View {
     @State private var displayState: NotchDisplayState = .closed
     @State private var isHovering = false
     @State private var showIslandControls = false
-    @State private var isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+    @State private var isAutoStartEnabled = false
+    @State private var isAutoStartUpdating = false
     @State private var suppressNextContainerTap = false
     // 用于取消延迟自动关闭的 WorkItem
     @State private var pendingAutoClose: DispatchWorkItem?
@@ -249,7 +250,7 @@ struct NotchContentView: View {
                     suppressNextContainerTap = true
                     pendingAutoClose?.cancel()
                     pendingAutoClose = nil
-                    isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+                    refreshAutoStartEnabled()
                     showIslandControls.toggle()
                 }
             }
@@ -337,10 +338,14 @@ struct NotchContentView: View {
             Toggle(isOn: Binding(
                 get: { isAutoStartEnabled },
                 set: { enabled in
+                    guard !isAutoStartUpdating else { return }
                     suppressNextContainerTap = true
+                    isAutoStartUpdating = true
                     isAutoStartEnabled = enabled
-                    CodexIslandControls.setAutoStartEnabled(enabled)
-                    isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+                    CodexIslandControls.setAutoStartEnabled(enabled) { confirmed in
+                        isAutoStartEnabled = confirmed
+                        isAutoStartUpdating = false
+                    }
                 }
             )) {
                 Text("开机自起")
@@ -350,10 +355,21 @@ struct NotchContentView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .tint(codexAccentColor)
+            .disabled(isAutoStartUpdating)
+            .opacity(isAutoStartUpdating ? 0.65 : 1)
             .pointingHandCursor()
         }
         .onAppear {
-            isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+            refreshAutoStartEnabled()
+        }
+    }
+
+    private func refreshAutoStartEnabled() {
+        guard !isAutoStartUpdating else { return }
+        isAutoStartUpdating = true
+        CodexIslandControls.refreshAutoStartEnabled { enabled in
+            isAutoStartEnabled = enabled
+            isAutoStartUpdating = false
         }
     }
 
