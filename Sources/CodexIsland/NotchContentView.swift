@@ -260,7 +260,7 @@ struct NotchContentView: View {
             if showIslandControls {
                 islandControls
                     .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 4)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -367,7 +367,7 @@ struct NotchContentView: View {
         switch displayState {
         case .closed: return notchHeight // 与刘海同高
         case .compact: return notchHeight // 紧凑态不向下展开，与刘海齐平
-        case .expanded: return notchHeight + (showIslandControls ? 258 : 220)
+        case .expanded: return notchHeight + (showIslandControls ? 236 : 220)
         }
     }
 
