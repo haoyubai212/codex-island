@@ -26,23 +26,19 @@ On first run, this command:
 2. Copies the hook writer to `~/.codex-island/codex_island_hook.py`.
 3. Builds `CodexIslandApp` in release mode.
 4. Copies the app binary to `~/Library/Application Support/CodexIsland/CodexIslandApp`.
-5. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
+5. Installs the CLI to `~/Library/Application Support/CodexIsland/codexisland`.
+6. Creates the CLI symlink at `~/.local/bin/codexisland`.
+7. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
 
 Codex may ask you to review or trust the newly installed hooks. That trust prompt is part of Codex's hook safety model.
 
-## Install The CLI
-
-After the first run, install the global command:
-
-```bash
-swift run codexisland install-cli
-```
-
-Make sure `~/.local/bin` is in your `PATH`, then use:
+After the first run, use:
 
 ```bash
 codexisland
 ```
+
+Make sure `~/.local/bin` is in your `PATH`.
 
 ## Install Locations
 

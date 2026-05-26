@@ -65,7 +65,7 @@ struct CodexIslandCLI {
         case "logs", "log":
             try logs()
         case "install-cli":
-            try installCLI()
+            try installCLI(buildIfNeeded: true)
         case "help", "-h", "--help":
             printUsage()
         default:
@@ -79,6 +79,7 @@ struct CodexIslandCLI {
         try installHooks()
         try buildRelease()
         try installAppBinary()
+        try installCLI(buildIfNeeded: false)
         try writeLaunchAgent()
         try restartLaunchAgent()
         print("Codex Island 已升级并启动")
@@ -239,8 +240,10 @@ struct CodexIslandCLI {
         print("Codex Island hooks 已移除")
     }
 
-    private func installCLI() throws {
-        try buildRelease()
+    private func installCLI(buildIfNeeded: Bool) throws {
+        if buildIfNeeded {
+            try buildRelease()
+        }
         guard let builtCLIPath else { throw CLIError.repoRootNotFound }
         try ensureDirectory(appSupportDir)
         let cliData = try Data(contentsOf: URL(fileURLWithPath: builtCLIPath))
