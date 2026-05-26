@@ -42,7 +42,7 @@ struct CodexIslandCLI {
         switch command {
         case "start":
             try start()
-        case "enable", "upgrade":
+        case "upgrade":
             try upgrade()
         case "disable", "stop":
             try stop()
@@ -404,7 +404,6 @@ struct CodexIslandCLI {
           codexisland restart         关闭并重启 app，不重装 hooks、不重新 build
           codexisland stop            停止 LaunchAgent 和当前进程
           codexisland upgrade         重新安装 hooks、构建 release、刷新 LaunchAgent 并启动
-          codexisland enable          同 upgrade
           codexisland status          查看运行状态
           codexisland install-hooks   只安装 Codex 全局 hooks
           codexisland uninstall-hooks 移除 Codex Island hooks

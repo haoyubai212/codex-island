@@ -47,7 +47,6 @@ Command semantics:
 - `codexisland`: start the app; if not installed, install and start.
 - `codexisland restart`: stop and start the app only. It does not rebuild, reinstall hooks, or rewrite the LaunchAgent.
 - `codexisland upgrade`: rebuild release, reinstall hooks, rewrite the LaunchAgent, and start.
-- `codexisland enable`: alias for `upgrade`.
 
 After building once, you can install a shell command:
 
