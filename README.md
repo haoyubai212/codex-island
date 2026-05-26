@@ -13,7 +13,7 @@ It runs independently from LocalServer. The `codexisland` CLI installs, starts, 
 - Xcode Command Line Tools, including SwiftPM
 - Codex Desktop or Codex CLI
 
-Codex Island has no Homebrew dependency and no third-party Swift package dependency. It uses macOS system tools such as `launchctl`, `zsh`, and `/usr/bin/python3`.
+If an agent is helping you install Codex Island, ask it to check these requirements first and install any missing dependencies before running the setup commands.
 
 ## Install
 

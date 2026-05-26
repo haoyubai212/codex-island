@@ -22,7 +22,7 @@ Codex Island 是一个轻量的 macOS Codex 灵动岛。它会检测并显示 Co
 - Xcode Command Line Tools，包含 SwiftPM
 - Codex Desktop 或 Codex CLI
 
-Codex Island 不依赖 Homebrew，也没有第三方 Swift 包依赖。它只使用 macOS 自带工具，例如 `launchctl`、`zsh` 和 `/usr/bin/python3`。
+如果你让 Agent 帮忙安装 Codex Island，请先让它确认这些依赖是否已经安装；如果缺少依赖，先安装依赖，再继续执行安装命令。
 
 ## 安装
 
