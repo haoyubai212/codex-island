@@ -13,7 +13,7 @@ It runs independently from LocalServer. The `codexisland` CLI installs, starts, 
 - Xcode Command Line Tools, including SwiftPM
 - Codex Desktop or Codex CLI
 
-If an agent is helping you install Codex Island, ask it to check these requirements first and install any missing dependencies before running the setup commands.
+If an agent is helping with installation, check these requirements first and install any missing dependencies before running the setup commands.
 
 ## Install
 
@@ -95,11 +95,19 @@ Codex Island does not use a menu-bar icon. Open the island, then click the Codex
 
 The Launch at login switch enables or disables `com.haoyu.codex-island` through `launchctl`. It does not remove the LaunchAgent file or quit the currently running app.
 
+If Codex Island detects a newer upstream commit, the same control area shows:
+
+- Update
+- Ignore
+
+Update fetches the source checkout, resets it to the upstream branch, then runs the full `codexisland upgrade` flow. Ignore hides the update prompt for one week.
+
 ## How It Works
 
 - Process monitor: finds Codex host processes and watches child processes with `libproc` + `kqueue`.
 - Hooks: `UserPromptSubmit` and `Stop` drive the thinking/completed animation; `PreToolUse` and `PostToolUse` provide fast command metadata.
 - Event file: hooks append compact JSONL events to `~/.codex-island/events.jsonl`.
+- Update check: the app checks the saved source checkout at startup and at most once per day. The source checkout path is saved during `codexisland upgrade`.
 
 ## Privacy
 

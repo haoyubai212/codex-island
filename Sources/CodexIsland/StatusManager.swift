@@ -13,6 +13,7 @@ class StatusManager: ObservableObject {
     @Published var activeCommandCount: Int = 0
     @Published var activeConversationCount: Int = 0
 
+    let updateManager: UpdateManager
     private let codexHookWatcher: CodexHookWatcher
     let processMonitor: ProcessMonitor
     private var cancellables = Set<AnyCancellable>()
@@ -28,11 +29,14 @@ class StatusManager: ObservableObject {
     }
 
     init() {
+        self.updateManager = UpdateManager()
         self.codexHookWatcher = CodexHookWatcher()
         self.processMonitor = ProcessMonitor()
         self.codexHookWatcher.setEnabled(true)
         bindCodexHookWatcher()
         bindProcessMonitor()
+        bindUpdateManager()
+        updateManager.checkForUpdatesIfNeeded()
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self = self, self.workState.isActive else { return }
@@ -138,6 +142,15 @@ class StatusManager: ObservableObject {
         processMonitor.$burstCount
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.recomputePresentation() }
+            .store(in: &cancellables)
+    }
+
+    private func bindUpdateManager() {
+        updateManager.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
             .store(in: &cancellables)
     }
 

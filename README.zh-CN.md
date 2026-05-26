@@ -22,7 +22,7 @@ Codex Island 是一个轻量的 macOS Codex 灵动岛。它会检测并显示 Co
 - Xcode Command Line Tools，包含 SwiftPM
 - Codex Desktop 或 Codex CLI
 
-如果你让 Agent 帮忙安装 Codex Island，请先让它确认这些依赖是否已经安装；如果缺少依赖，先安装依赖，再继续执行安装命令。
+如果 Agent 帮忙安装，请先确认这些依赖是否已经安装；如果缺少依赖，先安装依赖，再继续执行安装命令。
 
 ## 安装
 
@@ -104,11 +104,19 @@ Codex Island 没有菜单栏图标。展开灵动岛后，点击右下角 Codex 
 
 “开机自起”开关会通过 `launchctl` 启用或禁用 `com.haoyu.codex-island`。它不会删除 LaunchAgent 文件，也不会退出当前正在运行的 app。
 
+如果 Codex Island 检测到远端有新提交，同一个控制区会显示：
+
+- 更新
+- 忽略
+
+“更新”会拉取源码仓库，把本地 tracked 文件重置到上游分支，然后执行完整的 `codexisland upgrade` 流程。“忽略”会在一周内隐藏这次更新提醒。
+
 ## 工作原理
 
 - 进程监控：查找 Codex host 进程，并通过 `libproc` + `kqueue` 监听子进程。
 - Hooks：`UserPromptSubmit` 和 `Stop` 负责思考/完成动画；`PreToolUse` 和 `PostToolUse` 提供更快的命令元数据。
 - 事件文件：hooks 会把精简后的 JSONL 事件追加到 `~/.codex-island/events.jsonl`。
+- 更新检查：app 启动时检查保存的源码仓库路径，每天最多检查一次。源码仓库路径会在 `codexisland upgrade` 时写入配置。
 
 ## 隐私
 

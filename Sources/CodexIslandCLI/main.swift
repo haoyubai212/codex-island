@@ -29,6 +29,7 @@ struct CodexIslandCLI {
     var supportDir: String { "\(home)/.codex-island" }
     var appSupportDir: String { "\(home)/Library/Application Support/CodexIsland" }
     var hooksJSONPath: String { "\(home)/.codex/hooks.json" }
+    var configPath: String { "\(supportDir)/config.json" }
     var hookInstallPath: String { "\(supportDir)/codex_island_hook.py" }
     var launchAgentPath: String { "\(home)/Library/LaunchAgents/\(label).plist" }
     var builtAppPath: String? {
@@ -76,6 +77,7 @@ struct CodexIslandCLI {
     }
 
     private func upgrade() throws {
+        try writeSourceRepoPath()
         try installHooks()
         try buildRelease()
         try installAppBinary()
@@ -163,6 +165,7 @@ struct CodexIslandCLI {
     private func logs() throws {
         print("stdout: \(supportDir)/CodexIsland.out.log")
         print("stderr: \(supportDir)/CodexIsland.err.log")
+        print("update: \(supportDir)/update.log")
         print("实时系统日志: log stream --predicate 'subsystem == \"com.codexisland\"' --style compact")
     }
 
@@ -296,6 +299,34 @@ struct CodexIslandCLI {
 
         try ensureDirectory((launchAgentPath as NSString).deletingLastPathComponent)
         try plist.write(toFile: launchAgentPath, atomically: true, encoding: .utf8)
+    }
+
+    private struct CLIConfig: Codable {
+        var sourceRepoPath: String?
+        var lastUpdateCheckAt: TimeInterval?
+        var ignoreUpdateUntil: TimeInterval?
+        var pendingRemoteCommit: String?
+    }
+
+    private func writeSourceRepoPath() throws {
+        let root = try repoRoot()
+        try ensureDirectory(supportDir)
+
+        var config = readCLIConfig()
+        config.sourceRepoPath = root
+        try writeCLIConfig(config)
+    }
+
+    private func readCLIConfig() -> CLIConfig {
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)) else {
+            return CLIConfig()
+        }
+        return (try? JSONDecoder().decode(CLIConfig.self, from: data)) ?? CLIConfig()
+    }
+
+    private func writeCLIConfig(_ config: CLIConfig) throws {
+        let data = try JSONEncoder().encode(config)
+        try data.write(to: URL(fileURLWithPath: configPath), options: .atomic)
     }
 
     private func addHook(event: String, command: String, matcher: String?, hooks: inout [String: Any]) {

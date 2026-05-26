@@ -288,6 +288,50 @@ struct NotchContentView: View {
             .buttonStyle(.plain)
             .pointingHandCursor()
 
+            if statusManager.updateManager.state.isAvailable {
+                Button {
+                    suppressNextContainerTap = true
+                    statusManager.updateManager.startUpdate()
+                } label: {
+                    Text("更新")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.86))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(codexAccentColor.opacity(0.7)))
+                        .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+
+                Button {
+                    suppressNextContainerTap = true
+                    statusManager.updateManager.ignoreForOneWeek()
+                } label: {
+                    Text("忽略")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.64))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(.white.opacity(0.06)))
+                        .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            } else if statusManager.updateManager.state.isUpdating {
+                HStack(spacing: 5) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .scaleEffect(0.55)
+                    Text("更新中")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(.white.opacity(0.06)))
+            }
+
             Spacer()
 
             Toggle(isOn: Binding(
