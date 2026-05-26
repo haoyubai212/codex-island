@@ -6,6 +6,10 @@ Codex Island is a small macOS app that displays Codex activity in a Dynamic Isla
 
 It runs independently from LocalServer. The `codexisland` CLI installs, starts, restarts, and upgrades the app through a user LaunchAgent.
 
+## Demo
+
+https://github.com/user-attachments/assets/0992c236-3d9f-4c9b-9024-1d7b31d2fea0
+
 ## Requirements
 
 - macOS 14+

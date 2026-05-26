@@ -6,6 +6,10 @@ Codex Island 是一个轻量的 macOS Codex 灵动岛。它会检测并显示 Co
 
 它不依赖 LocalServer。`codexisland` CLI 会通过用户级 LaunchAgent 完成安装、启动、重启和升级。
 
+## 演示
+
+https://github.com/user-attachments/assets/0992c236-3d9f-4c9b-9024-1d7b31d2fea0
+
 ## 功能
 
 - 在屏幕顶部用灵动岛样式展示 Codex 活动。
