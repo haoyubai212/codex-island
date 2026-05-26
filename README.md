@@ -1,5 +1,7 @@
 # Codex Island
 
+[简体中文](README.zh-CN.md)
+
 Codex Island is a small macOS app that displays Codex activity in a Dynamic Island style overlay near the notch.
 
 It runs independently from LocalServer. The `codexisland` CLI installs, starts, restarts, and upgrades the app through a user LaunchAgent.
@@ -111,12 +113,12 @@ Hook events keep command metadata and remove large tool output before writing.
 codexisland stop
 codexisland uninstall-hooks
 rm -f ~/.local/bin/codexisland
-rm -rf ~/Library/Application\ Support/CodexIsland
+rm -rf "$HOME/Library/Application Support/CodexIsland"
 rm -f ~/Library/LaunchAgents/com.haoyu.codex-island.plist
 ```
 
 Runtime logs and events are kept in `~/.codex-island/`. Remove that directory only if you no longer need local history:
 
 ```bash
-rm -rf ~/.codex-island
+rm -rf "$HOME/.codex-island"
 ```
