@@ -7,8 +7,11 @@ It runs independently from LocalServer. The `codexisland` CLI installs, starts, 
 ## Requirements
 
 - macOS 14+
-- Xcode Command Line Tools
+- Git
+- Xcode Command Line Tools, including SwiftPM
 - Codex Desktop or Codex CLI
+
+Codex Island has no Homebrew dependency and no third-party Swift package dependency. It uses macOS system tools such as `launchctl`, `zsh`, and `/usr/bin/python3`.
 
 ## Install
 
@@ -107,13 +110,13 @@ Hook events keep command metadata and remove large tool output before writing.
 ```bash
 codexisland stop
 codexisland uninstall-hooks
-trash ~/.local/bin/codexisland
-trash ~/Library/Application\ Support/CodexIsland
-trash ~/Library/LaunchAgents/com.haoyu.codex-island.plist
+rm -f ~/.local/bin/codexisland
+rm -rf ~/Library/Application\ Support/CodexIsland
+rm -f ~/Library/LaunchAgents/com.haoyu.codex-island.plist
 ```
 
 Runtime logs and events are kept in `~/.codex-island/`. Remove that directory only if you no longer need local history:
 
 ```bash
-trash ~/.codex-island
+rm -rf ~/.codex-island
 ```
