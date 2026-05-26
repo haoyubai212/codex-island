@@ -2,7 +2,7 @@
 
 Codex Island is a small macOS app that displays Codex activity in a Dynamic Island style overlay near the notch.
 
-It is independent from LocalServer. The `codexisland` CLI installs, starts, restarts, and upgrades the app through a user LaunchAgent.
+It runs independently from LocalServer. The `codexisland` CLI installs, starts, restarts, and upgrades the app through a user LaunchAgent.
 
 ## Requirements
 
@@ -10,11 +10,13 @@ It is independent from LocalServer. The `codexisland` CLI installs, starts, rest
 - Xcode Command Line Tools
 - Codex Desktop or Codex CLI
 
-## Quick Start
+## Install
 
-From this repository:
+Clone the repository outside Documents/Desktop/Downloads. The recommended location is `~/codex-island`:
 
 ```bash
+git clone https://github.com/haoyubai212/codex-island.git ~/codex-island
+cd ~/codex-island
 swift run codexisland
 ```
 
@@ -26,42 +28,62 @@ On first run, this command:
 4. Copies the app binary to `~/Library/Application Support/CodexIsland/CodexIslandApp`.
 5. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
 
-After installation, `swift run codexisland` only starts the app.
+Codex may ask you to review or trust the newly installed hooks. That trust prompt is part of Codex's hook safety model.
 
-Codex may ask you to review or trust newly installed hooks. That trust prompt is part of Codex's hook safety model.
+## Install The CLI
 
-## CLI
-
-```bash
-swift run codexisland
-swift run codexisland restart
-swift run codexisland stop
-swift run codexisland upgrade
-swift run codexisland status
-swift run codexisland install-hooks
-swift run codexisland uninstall-hooks
-swift run codexisland logs
-```
-
-Command semantics:
-
-- `codexisland`: start the app; if not installed, install and start.
-- `codexisland restart`: stop and start the app only. It does not rebuild, reinstall hooks, or rewrite the LaunchAgent.
-- `codexisland upgrade`: rebuild release, reinstall hooks, copy the app into Application Support, rewrite the LaunchAgent, and start.
-
-After building once, you can install a shell command:
+After the first run, install the global command:
 
 ```bash
 swift run codexisland install-cli
 ```
 
-Make sure `~/.local/bin` is in your `PATH`, then run:
+Make sure `~/.local/bin` is in your `PATH`, then use:
 
 ```bash
 codexisland
 ```
 
-The installed app runs from `~/Library/Application Support/CodexIsland`, so the LaunchAgent does not execute binaries from your repository checkout.
+## Install Locations
+
+Codex Island keeps source code, runtime data, and installed binaries separate:
+
+- Source checkout: `~/codex-island`
+- App binary: `~/Library/Application Support/CodexIsland/CodexIslandApp`
+- CLI binary: `~/Library/Application Support/CodexIsland/codexisland`
+- CLI symlink: `~/.local/bin/codexisland`
+- LaunchAgent: `~/Library/LaunchAgents/com.haoyu.codex-island.plist`
+- Hook script: `~/.codex-island/codex_island_hook.py`
+- Events/logs: `~/.codex-island/`
+- Codex hooks config: `~/.codex/hooks.json`
+
+The LaunchAgent runs the app from `~/Library/Application Support/CodexIsland`, not from the repository checkout.
+
+## CLI
+
+```bash
+codexisland
+codexisland restart
+codexisland stop
+codexisland upgrade
+codexisland status
+codexisland logs
+```
+
+Command semantics:
+
+- `codexisland`: start the app. If it is not installed, install and start it.
+- `codexisland restart`: stop and start the app only. It does not rebuild, reinstall hooks, or rewrite the LaunchAgent.
+- `codexisland stop`: stop the LaunchAgent and current app process.
+- `codexisland upgrade`: rebuild release, reinstall hooks, copy the app into Application Support, rewrite the LaunchAgent, and start.
+- `codexisland status`: print whether the app process is running.
+- `codexisland logs`: print log file locations and the system log command.
+
+If you have not installed the global command yet, prefix commands with `swift run` from the repository:
+
+```bash
+swift run codexisland status
+```
 
 ## Controls
 
@@ -69,6 +91,8 @@ Codex Island does not use a menu-bar icon. Open the island, then click the Codex
 
 - Quit
 - Launch at login
+
+The Launch at login switch enables or disables `com.haoyu.codex-island` through `launchctl`. It does not remove the LaunchAgent file or quit the currently running app.
 
 ## How It Works
 
@@ -78,4 +102,22 @@ Codex Island does not use a menu-bar icon. Open the island, then click the Codex
 
 ## Privacy
 
-The app only writes local files under `~/.codex-island` and does not send telemetry. Hook events keep command metadata and remove large tool output before writing.
+Codex Island only writes local files under your home directory and does not send telemetry.
+
+Hook events keep command metadata and remove large tool output before writing.
+
+## Uninstall
+
+```bash
+codexisland stop
+codexisland uninstall-hooks
+trash ~/.local/bin/codexisland
+trash ~/Library/Application\ Support/CodexIsland
+trash ~/Library/LaunchAgents/com.haoyu.codex-island.plist
+```
+
+Runtime logs and events are kept in `~/.codex-island/`. Remove that directory only if you no longer need local history:
+
+```bash
+trash ~/.codex-island
+```
