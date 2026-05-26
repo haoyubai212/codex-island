@@ -289,10 +289,9 @@ struct CodexIslandCLI {
         process.standardOutput = pipe
         process.standardError = pipe
         try process.run()
-        process.waitUntilExit()
         try? pipe.fileHandleForWriting.close()
-
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
         let output = String(data: data, encoding: .utf8) ?? ""
         if !quiet && !output.isEmpty {
             print(output, terminator: output.hasSuffix("\n") ? "" : "\n")
