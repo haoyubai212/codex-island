@@ -22,7 +22,7 @@ This command:
 
 1. Installs Codex global hooks into `~/.codex/hooks.json`.
 2. Copies the hook writer to `~/.codex-island/codex_island_hook.py`.
-3. Builds `CodexIsland` in release mode.
+3. Builds `CodexIslandApp` in release mode.
 4. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
 
 Codex may ask you to review or trust newly installed hooks. That trust prompt is part of Codex's hook safety model.

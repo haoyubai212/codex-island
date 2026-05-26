@@ -5,12 +5,12 @@ let package = Package(
     name: "CodexIsland",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "CodexIsland", targets: ["CodexIsland"]),
+        .executable(name: "CodexIslandApp", targets: ["CodexIslandApp"]),
         .executable(name: "codexisland", targets: ["CodexIslandCLI"]),
     ],
     targets: [
         .executableTarget(
-            name: "CodexIsland",
+            name: "CodexIslandApp",
             path: "Sources/CodexIsland"
         ),
         .executableTarget(

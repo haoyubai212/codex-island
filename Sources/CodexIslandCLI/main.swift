@@ -1,4 +1,8 @@
+import Darwin
 import Foundation
+
+@_silgen_name("proc_listallpids")
+func proc_listallpids(_ buffer: UnsafeMutableRawPointer?, _ buffersize: Int32) -> Int32
 
 enum CLIError: Error, CustomStringConvertible {
     case repoRootNotFound
@@ -68,7 +72,7 @@ struct CodexIslandCLI {
         try ensureDirectory(supportDir)
         try runShell("swift build -c release --package-path \(shellQuote(root))")
 
-        let appBinary = "\(root)/.build/release/CodexIsland"
+        let appBinary = "\(root)/.build/release/CodexIslandApp"
         try writeLaunchAgent(appBinary: appBinary)
 
         let domain = "gui/\(getuid())"
@@ -81,20 +85,21 @@ struct CodexIslandCLI {
     private func stop(quiet: Bool = false) throws {
         let domain = "gui/\(getuid())"
         _ = try? runShell("launchctl bootout \(domain) \(shellQuote(launchAgentPath))", quiet: true)
-        _ = try? runShell("pkill -x CodexIsland", quiet: true)
+        _ = try? runShell("pkill -x CodexIslandApp", quiet: true)
         if !quiet {
             print("Codex Island 已停止")
         }
     }
 
     private func status() throws {
-        let output = try runShell("pgrep -fl CodexIsland || true", quiet: true)
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
+        let processes = codexIslandProcesses()
+        if processes.isEmpty {
             print("Codex Island 未运行")
         } else {
             print("Codex Island 正在运行:")
-            print(trimmed)
+            for process in processes {
+                print("\(process.pid) \(process.path)")
+            }
         }
     }
 
@@ -285,21 +290,42 @@ struct CodexIslandCLI {
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-lc", command]
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        try? pipe.fileHandleForWriting.close()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        let output = String(data: data, encoding: .utf8) ?? ""
-        if !quiet && !output.isEmpty {
-            print(output, terminator: output.hasSuffix("\n") ? "" : "\n")
+        if quiet {
+            let devNull = FileHandle(forWritingAtPath: "/dev/null")
+            process.standardOutput = devNull
+            process.standardError = devNull
         }
+        try process.run()
+        process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             throw CLIError.commandFailed(command, process.terminationStatus)
         }
-        return output
+        return ""
+    }
+
+    private func codexIslandProcesses() -> [(pid: Int32, path: String)] {
+        let allCount = proc_listallpids(nil, 0)
+        guard allCount > 0 else { return [] }
+
+        var allPIDs = [Int32](repeating: 0, count: Int(allCount))
+        let actualCount = proc_listallpids(&allPIDs, Int32(MemoryLayout<Int32>.size * Int(allCount)))
+        var matches: [(pid: Int32, path: String)] = []
+
+        for i in 0..<Int(actualCount) {
+            let pid = allPIDs[i]
+            if pid <= 0 || pid == getpid() { continue }
+
+            var pathBuffer = [UInt8](repeating: 0, count: Int(MAXPATHLEN))
+            let result = proc_pidpath(pid, &pathBuffer, UInt32(MAXPATHLEN))
+            guard result > 0 else { continue }
+
+            let path = String(cString: pathBuffer)
+            if (path as NSString).lastPathComponent == "CodexIslandApp" {
+                matches.append((pid, path))
+            }
+        }
+
+        return matches.sorted { $0.pid < $1.pid }
     }
 
     private func ensureDirectory(_ path: String) throws {
