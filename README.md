@@ -1,8 +1,8 @@
 # Codex Island
 
-Codex Island is a small macOS menu-bar app that displays Codex activity in a Dynamic Island style overlay near the notch.
+Codex Island is a small macOS app that displays Codex activity in a Dynamic Island style overlay near the notch.
 
-It is independent from LocalServer. The `codexisland` CLI builds and starts the app through a user LaunchAgent.
+It is independent from LocalServer. The `codexisland` CLI installs, starts, restarts, and upgrades the app through a user LaunchAgent.
 
 ## Requirements
 
@@ -18,12 +18,14 @@ From this repository:
 swift run codexisland
 ```
 
-This command:
+On first run, this command:
 
 1. Installs Codex global hooks into `~/.codex/hooks.json`.
 2. Copies the hook writer to `~/.codex-island/codex_island_hook.py`.
 3. Builds `CodexIslandApp` in release mode.
 4. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
+
+After installation, `swift run codexisland` only starts the app.
 
 Codex may ask you to review or trust newly installed hooks. That trust prompt is part of Codex's hook safety model.
 
@@ -31,14 +33,21 @@ Codex may ask you to review or trust newly installed hooks. That trust prompt is
 
 ```bash
 swift run codexisland
-swift run codexisland enable
-swift run codexisland status
 swift run codexisland restart
 swift run codexisland stop
+swift run codexisland upgrade
+swift run codexisland status
 swift run codexisland install-hooks
 swift run codexisland uninstall-hooks
 swift run codexisland logs
 ```
+
+Command semantics:
+
+- `codexisland`: start the app; if not installed, install and start.
+- `codexisland restart`: stop and start the app only. It does not rebuild, reinstall hooks, or rewrite the LaunchAgent.
+- `codexisland upgrade`: rebuild release, reinstall hooks, rewrite the LaunchAgent, and start.
+- `codexisland enable`: alias for `upgrade`.
 
 After building once, you can install a shell command:
 

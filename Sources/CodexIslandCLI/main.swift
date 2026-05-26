@@ -30,19 +30,25 @@ struct CodexIslandCLI {
     var hooksJSONPath: String { "\(home)/.codex/hooks.json" }
     var hookInstallPath: String { "\(supportDir)/codex_island_hook.py" }
     var launchAgentPath: String { "\(home)/Library/LaunchAgents/\(label).plist" }
+    var appBinaryPath: String? {
+        guard let root = try? repoRoot() else { return nil }
+        return "\(root)/.build/release/CodexIslandApp"
+    }
 
     func run() throws {
         let args = Array(CommandLine.arguments.dropFirst())
-        let command = args.first ?? "enable"
+        let command = args.first ?? "start"
 
         switch command {
-        case "enable", "start":
-            try enable()
+        case "start":
+            try start()
+        case "enable", "upgrade":
+            try upgrade()
         case "disable", "stop":
             try stop()
         case "restart":
             try stop(quiet: true)
-            try startApp()
+            try start()
         case "status":
             try status()
         case "install-hooks", "hooks":
@@ -62,24 +68,54 @@ struct CodexIslandCLI {
         }
     }
 
-    private func enable() throws {
+    private func upgrade() throws {
         try installHooks()
-        try startApp()
+        try buildRelease()
+        try writeLaunchAgent()
+        try restartLaunchAgent()
+        print("Codex Island 已升级并启动")
     }
 
-    private func startApp() throws {
+    private func start() throws {
+        if !isInstalled() {
+            try upgrade()
+            return
+        }
+
+        try startLaunchAgent()
+        print("Codex Island 已启动")
+    }
+
+    private func buildRelease() throws {
         let root = try repoRoot()
         try ensureDirectory(supportDir)
         try runShell("swift build -c release --package-path \(shellQuote(root))")
+    }
 
-        let appBinary = "\(root)/.build/release/CodexIslandApp"
-        try writeLaunchAgent(appBinary: appBinary)
+    private func isInstalled() -> Bool {
+        guard fileManager.fileExists(atPath: launchAgentPath),
+              let appBinaryPath,
+              fileManager.fileExists(atPath: appBinaryPath),
+              fileManager.fileExists(atPath: hookInstallPath) else {
+            return false
+        }
+        return hasCodexIslandHooks()
+    }
 
+    private func restartLaunchAgent() throws {
         let domain = "gui/\(getuid())"
         _ = try? runShell("launchctl bootout \(domain) \(shellQuote(launchAgentPath))", quiet: true)
-        try runShell("launchctl bootstrap \(domain) \(shellQuote(launchAgentPath))")
+        try startLaunchAgent()
+    }
+
+    private func startLaunchAgent() throws {
+        let domain = "gui/\(getuid())"
+        guard fileManager.fileExists(atPath: launchAgentPath) else {
+            try upgrade()
+            return
+        }
+        _ = try? runShell("launchctl bootstrap \(domain) \(shellQuote(launchAgentPath))", quiet: true)
         try runShell("launchctl kickstart -k \(domain)/\(label)")
-        print("Codex Island 已启动")
     }
 
     private func stop(quiet: Bool = false) throws {
@@ -134,6 +170,27 @@ struct CodexIslandCLI {
         print("Codex hooks 已安装到 \(hooksJSONPath)")
     }
 
+    private func hasCodexIslandHooks() -> Bool {
+        guard let rootObject = try? readHooksJSON(),
+              let hooks = rootObject["hooks"] as? [String: Any] else {
+            return false
+        }
+
+        for event in ["UserPromptSubmit", "Stop", "PreToolUse", "PostToolUse"] {
+            guard let entries = hooks[event] as? [[String: Any]] else { return false }
+            let exists = entries.contains { entry in
+                guard let nested = entry["hooks"] as? [[String: Any]] else { return false }
+                return nested.contains { hook in
+                    let command = hook["command"] as? String ?? ""
+                    return command.contains("codex_island_hook.py")
+                }
+            }
+            if !exists { return false }
+        }
+
+        return true
+    }
+
     private func uninstallHooks() throws {
         var rootObject = try readHooksJSON()
         guard var hooks = rootObject["hooks"] as? [String: Any] else {
@@ -183,7 +240,8 @@ struct CodexIslandCLI {
         print("如果当前 shell 找不到 codexisland，请确认 ~/.local/bin 在 PATH 中。")
     }
 
-    private func writeLaunchAgent(appBinary: String) throws {
+    private func writeLaunchAgent() throws {
+        guard let appBinary = appBinaryPath else { throw CLIError.repoRootNotFound }
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -341,11 +399,12 @@ struct CodexIslandCLI {
         Codex Island
 
         用法:
-          codexisland                 安装 hooks、构建 release、注册 LaunchAgent 并启动
-          codexisland enable          安装 hooks、构建 release、注册 LaunchAgent 并启动
-          codexisland start           同 enable
+          codexisland                 启动 app；未安装时自动完整安装
+          codexisland start           启动 app；未安装时自动完整安装
+          codexisland restart         关闭并重启 app，不重装 hooks、不重新 build
           codexisland stop            停止 LaunchAgent 和当前进程
-          codexisland restart         重启
+          codexisland upgrade         重新安装 hooks、构建 release、刷新 LaunchAgent 并启动
+          codexisland enable          同 upgrade
           codexisland status          查看运行状态
           codexisland install-hooks   只安装 Codex 全局 hooks
           codexisland uninstall-hooks 移除 Codex Island hooks
