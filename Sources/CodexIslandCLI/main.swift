@@ -27,13 +27,20 @@ struct CodexIslandCLI {
     let label = "com.haoyu.codex-island"
 
     var supportDir: String { "\(home)/.codex-island" }
+    var appSupportDir: String { "\(home)/Library/Application Support/CodexIsland" }
     var hooksJSONPath: String { "\(home)/.codex/hooks.json" }
     var hookInstallPath: String { "\(supportDir)/codex_island_hook.py" }
     var launchAgentPath: String { "\(home)/Library/LaunchAgents/\(label).plist" }
-    var appBinaryPath: String? {
+    var builtAppPath: String? {
         guard let root = try? repoRoot() else { return nil }
         return "\(root)/.build/release/CodexIslandApp"
     }
+    var builtCLIPath: String? {
+        guard let root = try? repoRoot() else { return nil }
+        return "\(root)/.build/release/codexisland"
+    }
+    var installedAppPath: String { "\(appSupportDir)/CodexIslandApp" }
+    var installedCLIPath: String { "\(appSupportDir)/codexisland" }
 
     func run() throws {
         let args = Array(CommandLine.arguments.dropFirst())
@@ -71,6 +78,7 @@ struct CodexIslandCLI {
     private func upgrade() throws {
         try installHooks()
         try buildRelease()
+        try installAppBinary()
         try writeLaunchAgent()
         try restartLaunchAgent()
         print("Codex Island 已升级并启动")
@@ -79,6 +87,11 @@ struct CodexIslandCLI {
     private func start() throws {
         if !isInstalled() {
             try upgrade()
+            return
+        }
+
+        if !codexIslandProcesses().isEmpty {
+            print("Codex Island 已在运行")
             return
         }
 
@@ -94,12 +107,19 @@ struct CodexIslandCLI {
 
     private func isInstalled() -> Bool {
         guard fileManager.fileExists(atPath: launchAgentPath),
-              let appBinaryPath,
-              fileManager.fileExists(atPath: appBinaryPath),
+              fileManager.fileExists(atPath: installedAppPath),
               fileManager.fileExists(atPath: hookInstallPath) else {
             return false
         }
         return hasCodexIslandHooks()
+    }
+
+    private func installAppBinary() throws {
+        guard let builtAppPath else { throw CLIError.repoRootNotFound }
+        try ensureDirectory(appSupportDir)
+        let data = try Data(contentsOf: URL(fileURLWithPath: builtAppPath))
+        try data.write(to: URL(fileURLWithPath: installedAppPath), options: .atomic)
+        try runShell("chmod +x \(shellQuote(installedAppPath))", quiet: true)
     }
 
     private func restartLaunchAgent() throws {
@@ -115,7 +135,7 @@ struct CodexIslandCLI {
             return
         }
         _ = try? runShell("launchctl bootstrap \(domain) \(shellQuote(launchAgentPath))", quiet: true)
-        try runShell("launchctl kickstart -k \(domain)/\(label)")
+        try runShell("launchctl kickstart \(domain)/\(label)")
     }
 
     private func stop(quiet: Bool = false) throws {
@@ -220,28 +240,32 @@ struct CodexIslandCLI {
     }
 
     private func installCLI() throws {
-        let root = try repoRoot()
-        try runShell("swift build -c release --package-path \(shellQuote(root))")
+        try buildRelease()
+        guard let builtCLIPath else { throw CLIError.repoRootNotFound }
+        try ensureDirectory(appSupportDir)
+        let cliData = try Data(contentsOf: URL(fileURLWithPath: builtCLIPath))
+        try cliData.write(to: URL(fileURLWithPath: installedCLIPath), options: .atomic)
+        try runShell("chmod +x \(shellQuote(installedCLIPath))", quiet: true)
+
         let binDir = "\(home)/.local/bin"
         try ensureDirectory(binDir)
         let target = "\(binDir)/codexisland"
         if fileManager.fileExists(atPath: target) {
             let destination = (try? fileManager.destinationOfSymbolicLink(atPath: target)) ?? ""
-            if destination == "\(root)/.build/release/codexisland" {
+            if destination == installedCLIPath {
                 print("命令已安装: \(target)")
                 return
             }
             print("已存在: \(target)")
-            print("请先手动处理这个文件，再重新运行 install-cli。")
+            print("请先处理这个文件，再重新运行 install-cli。推荐：trash \(target)")
             return
         }
-        try fileManager.createSymbolicLink(atPath: target, withDestinationPath: "\(root)/.build/release/codexisland")
+        try fileManager.createSymbolicLink(atPath: target, withDestinationPath: installedCLIPath)
         print("已安装命令: \(target)")
         print("如果当前 shell 找不到 codexisland，请确认 ~/.local/bin 在 PATH 中。")
     }
 
     private func writeLaunchAgent() throws {
-        guard let appBinary = appBinaryPath else { throw CLIError.repoRootNotFound }
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -251,7 +275,7 @@ struct CodexIslandCLI {
             <string>\(label)</string>
             <key>ProgramArguments</key>
             <array>
-                <string>\(appBinary)</string>
+                <string>\(installedAppPath)</string>
             </array>
             <key>RunAtLoad</key>
             <true/>

@@ -23,7 +23,8 @@ On first run, this command:
 1. Installs Codex global hooks into `~/.codex/hooks.json`.
 2. Copies the hook writer to `~/.codex-island/codex_island_hook.py`.
 3. Builds `CodexIslandApp` in release mode.
-4. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
+4. Copies the app binary to `~/Library/Application Support/CodexIsland/CodexIslandApp`.
+5. Registers and starts `~/Library/LaunchAgents/com.haoyu.codex-island.plist`.
 
 After installation, `swift run codexisland` only starts the app.
 
@@ -46,7 +47,7 @@ Command semantics:
 
 - `codexisland`: start the app; if not installed, install and start.
 - `codexisland restart`: stop and start the app only. It does not rebuild, reinstall hooks, or rewrite the LaunchAgent.
-- `codexisland upgrade`: rebuild release, reinstall hooks, rewrite the LaunchAgent, and start.
+- `codexisland upgrade`: rebuild release, reinstall hooks, copy the app into Application Support, rewrite the LaunchAgent, and start.
 
 After building once, you can install a shell command:
 
@@ -59,6 +60,8 @@ Make sure `~/.local/bin` is in your `PATH`, then run:
 ```bash
 codexisland
 ```
+
+The installed app runs from `~/Library/Application Support/CodexIsland`, so the LaunchAgent does not execute binaries from your repository checkout.
 
 ## Controls
 
