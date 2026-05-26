@@ -33,17 +33,17 @@ struct CodexIslandCLI {
 
     func run() throws {
         let args = Array(CommandLine.arguments.dropFirst())
-        let command = args.first ?? "help"
+        let command = args.first ?? "enable"
 
         switch command {
-        case "enable", "start", "启用":
+        case "enable", "start":
             try enable()
-        case "disable", "stop", "停用":
+        case "disable", "stop":
             try stop()
-        case "restart", "重启":
+        case "restart":
             try stop(quiet: true)
             try startApp()
-        case "status", "状态":
+        case "status":
             try status()
         case "install-hooks", "hooks":
             try installHooks()
@@ -341,6 +341,7 @@ struct CodexIslandCLI {
         Codex Island
 
         用法:
+          codexisland                 安装 hooks、构建 release、注册 LaunchAgent 并启动
           codexisland enable          安装 hooks、构建 release、注册 LaunchAgent 并启动
           codexisland start           同 enable
           codexisland stop            停止 LaunchAgent 和当前进程
@@ -350,8 +351,6 @@ struct CodexIslandCLI {
           codexisland uninstall-hooks 移除 Codex Island hooks
           codexisland install-cli     安装 ~/.local/bin/codexisland
           codexisland logs            显示日志位置
-
-        也支持中文命令: 启用 / 停用 / 重启 / 状态
         """)
     }
 }

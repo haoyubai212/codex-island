@@ -15,7 +15,7 @@ It is independent from LocalServer. The `codexisland` CLI builds and starts the 
 From this repository:
 
 ```bash
-swift run codexisland enable
+swift run codexisland
 ```
 
 This command:
@@ -30,6 +30,7 @@ Codex may ask you to review or trust newly installed hooks. That trust prompt is
 ## CLI
 
 ```bash
+swift run codexisland
 swift run codexisland enable
 swift run codexisland status
 swift run codexisland restart
@@ -48,16 +49,7 @@ swift run codexisland install-cli
 Make sure `~/.local/bin` is in your `PATH`, then run:
 
 ```bash
-codexisland enable
-```
-
-Chinese subcommands are also supported:
-
-```bash
-codexisland 启用
-codexisland 停用
-codexisland 重启
-codexisland 状态
+codexisland
 ```
 
 ## How It Works
