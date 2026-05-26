@@ -554,7 +554,6 @@ struct CodexBadge: View {
         }
         .buttonStyle(.plain)
         .pointingHandCursor()
-        .help("Codex Island")
     }
 }
 
