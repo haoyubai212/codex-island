@@ -613,69 +613,127 @@ private extension View {
     }
 }
 
-// MARK: - Codex logo（透明背景）
+// MARK: - Codex logo（透明背景，忠实还原官方图标）
 struct CodexLogoIcon: View {
     var size: CGFloat = 14
 
     var body: some View {
         ZStack {
+            // 云朵形状 — 主体渐变（左上紫 → 右下蓝）
             CodexCloudShape()
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.72, green: 0.48, blue: 1.0),
-                            Color(red: 0.40, green: 0.43, blue: 1.0),
-                            Color(red: 0.18, green: 0.28, blue: 1.0),
-                            Color(red: 0.38, green: 0.76, blue: 1.0)
+                            Color(red: 0.65, green: 0.52, blue: 0.96),   // 左上：淡紫
+                            Color(red: 0.50, green: 0.48, blue: 0.98),   // 中偏紫
+                            Color(red: 0.38, green: 0.44, blue: 0.98),   // 中蓝紫
+                            Color(red: 0.30, green: 0.50, blue: 1.00),   // 中蓝
+                            Color(red: 0.42, green: 0.65, blue: 1.00),   // 右下：天蓝
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .overlay {
-                    CodexCloudShape()
-                        .stroke(.white.opacity(0.23), lineWidth: max(0.45, size * 0.045))
-                        .blur(radius: size * 0.015)
-                        .padding(size * 0.025)
-                }
-                .shadow(color: Color(red: 0.22, green: 0.24, blue: 1.0).opacity(0.35), radius: size * 0.10, x: 0, y: size * 0.05)
 
+            // 玻璃高光层 — 顶部高光
+            CodexCloudShape()
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            .white.opacity(0.35),
+                            .white.opacity(0.08),
+                            .clear,
+                        ],
+                        startPoint: .top,
+                        endPoint: .center
+                    )
+                )
+
+            // 底部暗影（3D 立体感）
+            CodexCloudShape()
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            .clear,
+                            Color(red: 0.15, green: 0.18, blue: 0.55).opacity(0.25),
+                        ],
+                        startPoint: .center,
+                        endPoint: .bottom
+                    )
+                )
+
+            // 细微边缘高光
+            CodexCloudShape()
+                .stroke(.white.opacity(0.18), lineWidth: max(0.4, size * 0.035))
+                .blur(radius: size * 0.01)
+                .padding(size * 0.02)
+
+            // 外阴影
+            CodexCloudShape()
+                .fill(.clear)
+                .shadow(color: Color(red: 0.25, green: 0.28, blue: 0.90).opacity(0.30),
+                        radius: size * 0.08, x: 0, y: size * 0.04)
+
+            // 「>」— chevron，偏左居中
             Image(systemName: "chevron.right")
-                .font(.system(size: size * 0.48, weight: .heavy))
+                .font(.system(size: size * 0.34, weight: .bold))
                 .foregroundColor(.white.opacity(0.95))
-                .offset(x: -size * 0.18, y: size * 0.01)
+                .offset(x: -size * 0.10, y: -size * 0.02)
 
+            // 「_」— 下划线光标，偏右偏下
             Capsule()
-                .fill(.white.opacity(0.95))
-                .frame(width: size * 0.24, height: max(1.4, size * 0.075))
-                .offset(x: size * 0.22, y: size * 0.15)
+                .fill(.white.opacity(0.92))
+                .frame(width: size * 0.18, height: max(1.2, size * 0.06))
+                .offset(x: size * 0.18, y: size * 0.13)
         }
         .frame(width: size, height: size)
     }
 }
 
+/// 6 瓣云朵形状 — 用重叠椭圆模拟 Codex 官方图标的花朵状外轮廓
 struct CodexCloudShape: Shape {
     func path(in rect: CGRect) -> Path {
-        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(
-                x: rect.minX + rect.width * x,
-                y: rect.minY + rect.height * y
+        let w = rect.width
+        let h = rect.height
+        let cx = rect.midX
+        let cy = rect.midY
+
+        // 中心主体 + 6 瓣（按 60° 间隔均匀分布）
+        // (中心X偏移比, 中心Y偏移比, 宽半径比, 高半径比)
+        let lobes: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [
+            // 中心主体
+            ( 0.00,  0.02, 0.30, 0.30),
+            // 瓣 1：正上方（12 点钟）
+            ( 0.00, -0.28, 0.21, 0.19),
+            // 瓣 2：右上方（2 点钟）
+            ( 0.25, -0.14, 0.21, 0.20),
+            // 瓣 3：右下方（4 点钟）
+            ( 0.25,  0.18, 0.20, 0.19),
+            // 瓣 4：正下方（6 点钟）
+            ( 0.00,  0.30, 0.20, 0.18),
+            // 瓣 5：左下方（8 点钟）
+            (-0.25,  0.18, 0.20, 0.19),
+            // 瓣 6：左上方（10 点钟）
+            (-0.25, -0.14, 0.21, 0.20),
+        ]
+
+        var combined = Path()
+        for (dx, dy, rw, rh) in lobes {
+            let lobeCX = cx + w * dx
+            let lobeCY = cy + h * dy
+            let lobeW = w * rw
+            let lobeH = h * rh
+            let lobeRect = CGRect(
+                x: lobeCX - lobeW,
+                y: lobeCY - lobeH,
+                width: lobeW * 2,
+                height: lobeH * 2
             )
+            combined.addEllipse(in: lobeRect)
         }
 
-        var path = Path()
-        path.move(to: point(0.48, 0.05))
-        path.addCurve(to: point(0.78, 0.18), control1: point(0.59, -0.01), control2: point(0.73, 0.04))
-        path.addCurve(to: point(0.97, 0.38), control1: point(0.91, 0.14), control2: point(1.00, 0.25))
-        path.addCurve(to: point(0.86, 0.65), control1: point(1.06, 0.49), control2: point(1.00, 0.65))
-        path.addCurve(to: point(0.63, 0.94), control1: point(0.87, 0.81), control2: point(0.77, 0.94))
-        path.addCurve(to: point(0.39, 0.89), control1: point(0.54, 1.00), control2: point(0.44, 0.98))
-        path.addCurve(to: point(0.16, 0.75), control1: point(0.29, 0.93), control2: point(0.17, 0.88))
-        path.addCurve(to: point(0.06, 0.48), control1: point(0.03, 0.70), control2: point(-0.01, 0.55))
-        path.addCurve(to: point(0.19, 0.23), control1: point(0.02, 0.34), control2: point(0.07, 0.24))
-        path.addCurve(to: point(0.48, 0.05), control1: point(0.23, 0.09), control2: point(0.36, 0.03))
-        path.closeSubpath()
-        return path
+        return combined
     }
 }
 
