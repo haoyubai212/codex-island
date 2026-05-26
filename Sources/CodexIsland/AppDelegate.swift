@@ -4,7 +4,6 @@ import SwiftUI
 // MARK: - 应用代理
 class AppDelegate: NSObject, NSApplicationDelegate {
     var notchWindow: NotchWindow?
-    var statusItem: NSStatusItem?
     var statusManager: StatusManager?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,55 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.orderFrontRegardless()
         self.notchWindow = window
 
-        // 创建菜单栏图标
-        setupMenuBar()
-
         print("[Codex Island] 应用启动完成")
         print("[Codex Island] 刘海尺寸: \(window.notchWidth) × \(window.notchHeight)")
-    }
-
-    // MARK: - 菜单栏
-
-    private func setupMenuBar() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-
-        if let button = statusItem?.button {
-            // 优先使用 island.fill 图标，不可用时降级
-            if let img = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Codex Island") {
-                button.image = img
-            }
-        }
-
-        let menu = NSMenu()
-
-        let titleItem = NSMenuItem(title: "Codex Island v0.1", action: nil, keyEquivalent: "")
-        titleItem.isEnabled = false
-        menu.addItem(titleItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let toggleItem = NSMenuItem(title: "显示/隐藏灵动岛", action: #selector(toggleNotch), keyEquivalent: "d")
-        toggleItem.target = self
-        menu.addItem(toggleItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let quitItem = NSMenuItem(title: "退出 Codex Island", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-
-        statusItem?.menu = menu
-    }
-
-    @objc private func toggleNotch() {
-        if notchWindow?.isVisible == true {
-            notchWindow?.orderOut(nil)
-        } else {
-            notchWindow?.orderFrontRegardless()
-        }
-    }
-
-    @objc private func quitApp() {
-        NSApp.terminate(nil)
     }
 }

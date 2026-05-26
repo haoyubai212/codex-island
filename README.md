@@ -52,6 +52,13 @@ Make sure `~/.local/bin` is in your `PATH`, then run:
 codexisland
 ```
 
+## Controls
+
+Codex Island does not use a menu-bar icon. Open the island, then click the Codex badge in the lower-right corner to reveal app controls:
+
+- Quit
+- Launch at login
+
 ## How It Works
 
 - Process monitor: finds Codex host processes and watches child processes with `libproc` + `kqueue`.

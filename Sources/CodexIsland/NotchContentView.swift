@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // 状态变化通知名
@@ -10,6 +11,9 @@ struct NotchContentView: View {
     @ObservedObject var statusManager: StatusManager
     @State private var displayState: NotchDisplayState = .closed
     @State private var isHovering = false
+    @State private var showIslandControls = false
+    @State private var isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+    @State private var suppressNextContainerTap = false
     // 用于取消延迟自动关闭的 WorkItem
     @State private var pendingAutoClose: DispatchWorkItem?
 
@@ -42,6 +46,7 @@ struct NotchContentView: View {
             }
             .frame(width: currentWidth, height: currentHeight)
             .animation(.spring(response: 0.45, dampingFraction: 0.82), value: displayState)
+            .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showIslandControls)
             .opacity(displayState == .closed ? 0 : 1)
             .animation(.easeOut(duration: 0.5), value: displayState == .closed)
 
@@ -240,13 +245,72 @@ struct NotchContentView: View {
                     .font(.system(size: 10))
                     .foregroundColor(.gray)
                 Spacer()
-                CodexBadge()
+                CodexBadge {
+                    suppressNextContainerTap = true
+                    pendingAutoClose?.cancel()
+                    pendingAutoClose = nil
+                    isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+                    showIslandControls.toggle()
+                }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
             .padding(.top, 4)
+
+            if showIslandControls {
+                islandControls
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var islandControls: some View {
+        HStack(spacing: 10) {
+            Button {
+                suppressNextContainerTap = true
+                CodexIslandControls.quit()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "power")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("退出")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.76))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(.white.opacity(0.08)))
+                .overlay(Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+
+            Spacer()
+
+            Toggle(isOn: Binding(
+                get: { isAutoStartEnabled },
+                set: { enabled in
+                    suppressNextContainerTap = true
+                    isAutoStartEnabled = enabled
+                    CodexIslandControls.setAutoStartEnabled(enabled)
+                    isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+                }
+            )) {
+                Text("开机自起")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.white.opacity(0.72))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .tint(codexAccentColor)
+            .pointingHandCursor()
+        }
+        .onAppear {
+            isAutoStartEnabled = CodexIslandControls.isAutoStartEnabled()
+        }
     }
 
     @ViewBuilder
@@ -303,7 +367,7 @@ struct NotchContentView: View {
         switch displayState {
         case .closed: return notchHeight // 与刘海同高
         case .compact: return notchHeight // 紧凑态不向下展开，与刘海齐平
-        case .expanded: return notchHeight + 220
+        case .expanded: return notchHeight + (showIslandControls ? 258 : 220)
         }
     }
 
@@ -355,6 +419,11 @@ struct NotchContentView: View {
     }
 
     private func handleTap() {
+        if suppressNextContainerTap {
+            suppressNextContainerTap = false
+            return
+        }
+
         // 用户主动交互 → 取消任何自动关闭/收起
         pendingAutoClose?.cancel()
         pendingAutoClose = nil
@@ -368,6 +437,7 @@ struct NotchContentView: View {
             case .expanded:
                 // 展开态点击 → 丝滑收回到紧凑态（而非直接关闭）
                 displayState = .compact
+                showIslandControls = false
             }
         }
     }
@@ -447,6 +517,7 @@ struct NotchContentView: View {
                 // 先丝滑收回到紧凑态
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
                     displayState = .compact
+                    showIslandControls = false
                 }
                 // 再延迟关闭
                 scheduleAutoClose(after: 0.8)
@@ -459,25 +530,43 @@ struct NotchContentView: View {
 
 // MARK: - 应用标识
 struct CodexBadge: View {
+    var action: () -> Void = {}
+
     var body: some View {
-        HStack(spacing: 4) {
-            CodexLogoIcon(size: 11)
-            Text("Codex")
-                .font(.system(size: 9, weight: .medium))
-                .lineLimit(1)
+        Button(action: action) {
+            HStack(spacing: 4) {
+                CodexLogoIcon(size: 11)
+                Text("Codex")
+                    .font(.system(size: 9, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(.white.opacity(0.72))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(.white.opacity(0.08))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(.white.opacity(0.12), lineWidth: 0.5)
+            )
         }
-        .foregroundColor(.white.opacity(0.72))
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(.white.opacity(0.08))
-        )
-        .overlay(
-            Capsule()
-                .stroke(.white.opacity(0.12), lineWidth: 0.5)
-        )
+        .buttonStyle(.plain)
+        .pointingHandCursor()
         .help("Codex Island")
+    }
+}
+
+private extension View {
+    func pointingHandCursor() -> some View {
+        onHover { hovering in
+            if hovering {
+                NSCursor.pointingHand.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
     }
 }
 
@@ -577,4 +666,3 @@ struct ToolCallRow: View {
         return "\(Int(interval / 60))m前"
     }
 }
-
