@@ -533,12 +533,20 @@ struct NotchContentView: View {
                         displayState = .compact
                     }
                 }
-                scheduleAutoClose(after: 2.0)
+                if displayState == .expanded {
+                    scheduleAutoCollapse(after: 2.0)
+                } else {
+                    scheduleAutoClose(after: 2.0)
+                }
 
             case .idle:
-                // 空闲 → compact 且无 hover 时收回
-                if displayState == .compact && !isHovering {
-                    scheduleAutoClose(after: 1.0)
+                // 空闲 → 非悬停时收回
+                if !isHovering {
+                    if displayState == .expanded {
+                        scheduleAutoCollapse(after: 0.5)
+                    } else if displayState == .compact {
+                        scheduleAutoClose(after: 1.0)
+                    }
                 }
 
             case .error:

@@ -18,6 +18,7 @@ class StatusManager: ObservableObject {
     let processMonitor: ProcessMonitor
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
+    private var completedFallbackWork: DispatchWorkItem?
 
     var elapsedTimeString: String {
         guard let start = taskStartTime else { return "" }
@@ -46,6 +47,7 @@ class StatusManager: ObservableObject {
 
     deinit {
         refreshTimer?.invalidate()
+        completedFallbackWork?.cancel()
     }
 
     private func bindCodexHookWatcher() {
@@ -162,6 +164,11 @@ class StatusManager: ObservableObject {
     private func applyState(_ newState: AGWorkState) {
         let oldState = workState
 
+        if newState.isActive {
+            completedFallbackWork?.cancel()
+            completedFallbackWork = nil
+        }
+
         if !oldState.isActive && newState.isActive {
             taskStartTime = Date()
         }
@@ -170,6 +177,35 @@ class StatusManager: ObservableObject {
         }
 
         workState = newState
+
+        if case .completed = newState {
+            scheduleCompletedFallback()
+        } else {
+            completedFallbackWork?.cancel()
+            completedFallbackWork = nil
+        }
+    }
+
+    private func scheduleCompletedFallback() {
+        completedFallbackWork?.cancel()
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.completedFallbackWork = nil
+
+            guard case .completed = self.workState,
+                  self.activeCommandCount == 0,
+                  self.activeConversationCount == 0,
+                  !self.processMonitor.isRunningCommand else {
+                return
+            }
+
+            self.applyState(.idle)
+            self.recomputePresentation()
+        }
+
+        completedFallbackWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: work)
     }
 
     private func recomputePresentation() {
