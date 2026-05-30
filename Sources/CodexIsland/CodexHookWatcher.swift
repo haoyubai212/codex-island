@@ -173,7 +173,8 @@ class CodexHookWatcher: ObservableObject {
             scheduleSessionCompletion(sessionKey)
 
         case "PreToolUse":
-            guard let command = commandString(from: event), !command.isEmpty else { return }
+            guard let command = commandString(from: event), !command.isEmpty,
+                  !ProcessMonitor.isNoise(command) else { return }
             let displayName = displayCommandName(command)
             let compactName = compactCommandName(command)
             let category = ProcessMonitor.categorizeCommand(command)
@@ -190,7 +191,8 @@ class CodexHookWatcher: ObservableObject {
             addRecord(displayName, icon: category.icon, color: category.color, status: "running", timestamp: timestamp)
 
         case "PostToolUse":
-            guard let command = commandString(from: event), !command.isEmpty else { return }
+            guard let command = commandString(from: event), !command.isEmpty,
+                  !ProcessMonitor.isNoise(command) else { return }
             let displayName = displayCommandName(command)
             let compactName = compactCommandName(command)
             let category = ProcessMonitor.categorizeCommand(command)

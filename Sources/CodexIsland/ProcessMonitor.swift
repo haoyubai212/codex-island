@@ -480,7 +480,7 @@ class ProcessMonitor: ObservableObject {
                     // 临时 shell → 穿透一层读取内部命令
                     if let path = ProcessSnapshotter.executablePath(of: childPID),
                        ProcessSnapshotter.isShellExecutablePath(path) {
-                        if let cmd = commandStringForDisplay(pid: childPID), !isNoise(cmd) {
+                        if let cmd = commandStringForDisplay(pid: childPID), !Self.isNoise(cmd) {
                             registerChild(childPID, command: cmd, zshPID: zshPID)
                             log("🎯 Codex shell 命令: PID \(childPID) → \(cmd)")
                         } else {
@@ -493,7 +493,7 @@ class ProcessMonitor: ObservableObject {
 
                     // 非 zsh 的直接子进程（git, swift, curl 等）→ 立即读 argv 注册
                     // language_server spawn 的进程 exec 已完成，无需 300ms grace
-                    if let cmdString = commandStringForDisplay(pid: childPID), !isNoise(cmdString) {
+                    if let cmdString = commandStringForDisplay(pid: childPID), !Self.isNoise(cmdString) {
                         registerChild(childPID, command: cmdString, zshPID: zshPID)
                         log("⚡ 新架构直接命令: PID \(childPID) → \(cmdString)")
                     } else {
@@ -526,7 +526,7 @@ class ProcessMonitor: ObservableObject {
                     }
                 } else {
                     // 300ms+ → 尝试读 argv 做短命令闪现（exec 已完成）
-                    if let cmdString = commandStringForDisplay(pid: pid), !isNoise(cmdString) {
+                    if let cmdString = commandStringForDisplay(pid: pid), !Self.isNoise(cmdString) {
                         registerChild(pid, command: cmdString, zshPID: candidate.shellPID)
                     } else {
                         DispatchQueue.main.async { [weak self] in
@@ -541,7 +541,7 @@ class ProcessMonitor: ObservableObject {
             if age >= 0.3 {
                 candidates.removeValue(forKey: pid)
                 if let cmdString = commandStringForDisplay(pid: pid) {
-                    if isNoise(cmdString) { continue }
+                    if Self.isNoise(cmdString) { continue }
                     registerChild(pid, command: cmdString, zshPID: candidate.shellPID)
                 } else {
                     // argv 还是读不到但还活着 → pending
@@ -806,7 +806,7 @@ class ProcessMonitor: ObservableObject {
                 if monitoredZshPIDs.contains(childPID) { continue }
 
                 guard let cmdString = commandStringForDisplay(pid: childPID) else { continue }
-                if isNoise(cmdString) { continue }
+                if Self.isNoise(cmdString) { continue }
 
                 let event = CommandEvent(
                     pid: childPID,
@@ -880,7 +880,7 @@ class ProcessMonitor: ObservableObject {
 
     // MARK: - 噪音过滤
 
-    private func isNoise(_ command: String) -> Bool {
+    static func isNoise(_ command: String) -> Bool {
         // CodexIsland 自身
         if command.contains("CodexIsland") || command.contains("codexisland") { return true }
         // shell 载体（包括子 shell）
@@ -917,6 +917,10 @@ class ProcessMonitor: ObservableObject {
         if command.contains("log stream") { return true }
         // conda shell 初始化噪音
         if command.contains("conda shell") || command.contains("conda activate") { return true }
+        // git ls-remote：fetch 远程引用列表，非用户操作
+        if command.hasPrefix("git ls-remote") || command.contains(" git ls-remote") { return true }
+        // zsh dotdir init 噪音
+        if command.contains("$ZDOTDIR") { return true }
         return false
     }
 
