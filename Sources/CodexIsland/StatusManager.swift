@@ -95,6 +95,9 @@ class StatusManager: ObservableObject {
                 guard let self = self else { return }
                 self.isConversationActive = count > 0
                 self.activeConversationCount = count
+                if count == 0 {
+                    self.rescheduleCompletedFallbackIfQuiescent()
+                }
             }
             .store(in: &cancellables)
     }
@@ -110,6 +113,8 @@ class StatusManager: ObservableObject {
                     self.applyState(.executing(cmd.category, cmd.displayName))
                 } else if case .executing = self.workState {
                     self.applyState(.completed)
+                } else if case .completed = self.workState {
+                    self.rescheduleCompletedFallbackIfQuiescent()
                 }
 
                 self.recomputePresentation()
@@ -206,6 +211,18 @@ class StatusManager: ObservableObject {
 
         completedFallbackWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: work)
+    }
+
+    private func rescheduleCompletedFallbackIfQuiescent() {
+        guard completedFallbackWork == nil,
+              case .completed = workState,
+              activeCommandCount == 0,
+              activeConversationCount == 0,
+              !processMonitor.isRunningCommand else {
+            return
+        }
+
+        scheduleCompletedFallback()
     }
 
     private func recomputePresentation() {
