@@ -11,7 +11,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "CodexIslandApp",
-            path: "Sources/CodexIsland"
+            path: "Sources/CodexIsland",
+            resources: [
+                .process("Resources"),
+            ]
         ),
         .executableTarget(
             name: "CodexIslandCLI",

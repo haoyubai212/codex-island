@@ -881,8 +881,13 @@ class ProcessMonitor: ObservableObject {
     // MARK: - 噪音过滤
 
     static func isNoise(_ command: String) -> Bool {
+        let lower = command.lowercased()
+
         // CodexIsland 自身
         if command.contains("CodexIsland") || command.contains("codexisland") { return true }
+        // 其他 hook / 通知桥内部命令。它们是状态同步副作用，不应占用完成态。
+        if lower.contains("clawd on desk.app") || lower.contains("codex-hook.js") { return true }
+        if lower.hasPrefix("agently-cli message ") || lower.contains(" agently-cli message ") { return true }
         // shell 载体（包括子 shell）
         if command == "zsh" || command == "-zsh" || command == "sh" || command == "bash" || command == "fish" { return true }
         if command.hasSuffix("/zsh") || command.hasSuffix("/sh") || command.hasSuffix("/bash") || command.hasSuffix("/fish") { return true }

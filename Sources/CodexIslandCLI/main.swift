@@ -40,8 +40,13 @@ struct CodexIslandCLI {
         guard let root = try? repoRoot() else { return nil }
         return "\(root)/.build/release/codexisland"
     }
+    var builtResourceBundlePath: String? {
+        guard let root = try? repoRoot() else { return nil }
+        return "\(root)/.build/release/CodexIsland_CodexIslandApp.bundle"
+    }
     var installedAppPath: String { "\(appSupportDir)/CodexIslandApp" }
     var installedCLIPath: String { "\(appSupportDir)/codexisland" }
+    var installedResourceBundlePath: String { "\(appSupportDir)/CodexIsland_CodexIslandApp.bundle" }
 
     func run() throws {
         let args = Array(CommandLine.arguments.dropFirst())
@@ -111,6 +116,7 @@ struct CodexIslandCLI {
     private func isInstalled() -> Bool {
         guard fileManager.fileExists(atPath: launchAgentPath),
               fileManager.fileExists(atPath: installedAppPath),
+              fileManager.fileExists(atPath: installedResourceBundlePath),
               fileManager.fileExists(atPath: hookInstallPath) else {
             return false
         }
@@ -123,6 +129,14 @@ struct CodexIslandCLI {
         let data = try Data(contentsOf: URL(fileURLWithPath: builtAppPath))
         try data.write(to: URL(fileURLWithPath: installedAppPath), options: .atomic)
         try runShell("chmod +x \(shellQuote(installedAppPath))", quiet: true)
+
+        if let builtResourceBundlePath,
+           fileManager.fileExists(atPath: builtResourceBundlePath) {
+            try runShell(
+                "/usr/bin/ditto \(shellQuote(builtResourceBundlePath)) \(shellQuote(installedResourceBundlePath))",
+                quiet: true
+            )
+        }
     }
 
     private func restartLaunchAgent() throws {

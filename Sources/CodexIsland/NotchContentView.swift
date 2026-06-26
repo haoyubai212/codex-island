@@ -289,6 +289,25 @@ struct NotchContentView: View {
             .buttonStyle(.plain)
             .pointingHandCursor()
 
+            Button {
+                suppressNextContainerTap = true
+                CodexIslandControls.restart()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 9, weight: .semibold))
+                    Text("重启")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.76))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(.white.opacity(0.08)))
+                .overlay(Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .pointingHandCursor()
+
             if statusManager.updateManager.state.isAvailable {
                 Button {
                     suppressNextContainerTap = true

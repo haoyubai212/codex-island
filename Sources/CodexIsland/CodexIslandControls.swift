@@ -31,6 +31,12 @@ enum CodexIslandControls {
         NSApp.terminate(nil)
     }
 
+    static func restart() {
+        DispatchQueue.global(qos: .utility).async {
+            _ = runLaunchctl(arguments: ["kickstart", "-k", "gui/\(getuid())/\(label)"])
+        }
+    }
+
     private static func isAutoStartEnabledSync() -> Bool {
         guard FileManager.default.fileExists(atPath: launchAgentPath) else { return false }
         let output = runLaunchctl(arguments: ["print-disabled", "gui/\(getuid())"])

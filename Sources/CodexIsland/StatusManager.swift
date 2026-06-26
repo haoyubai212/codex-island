@@ -184,6 +184,9 @@ class StatusManager: ObservableObject {
         workState = newState
 
         if case .completed = newState {
+            if oldState != .completed {
+                CompletionSoundPlayer.shared.playCompleted()
+            }
             scheduleCompletedFallback()
         } else {
             completedFallbackWork?.cancel()
