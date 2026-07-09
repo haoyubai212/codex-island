@@ -892,8 +892,10 @@ class ProcessMonitor: ObservableObject {
         if command == "zsh" || command == "-zsh" || command == "sh" || command == "bash" || command == "fish" { return true }
         if command.hasSuffix("/zsh") || command.hasSuffix("/sh") || command.hasSuffix("/bash") || command.hasSuffix("/fish") { return true }
         if command.hasPrefix("zsh -") || command.hasPrefix("sh -") || command.hasPrefix("bash -") || command.hasPrefix("fish -") { return true }
-        // Codex Desktop / 插件运行时进程，不是用户命令
-        if command.contains("codex app-server") || command.contains("Codex Helper") { return true }
+        // Codex Desktop / 插件运行时进程，不是用户命令。
+        // `codex-code-mode-host` 是新版 Code Mode 的长生命周期执行宿主；
+        // 它存在不代表有一条用户命令仍在运行。
+        if command.contains("codex app-server") || lower.contains("codex-code-mode-host") || command.contains("Codex Helper") { return true }
         if command.contains("node_repl") || command.contains("SkyComputerUseClient") { return true }
         if command.contains("playwright-mcp") || command.contains("xcodebuildmcp") { return true }
         if command.contains("extension-host") || command.contains("bare-modifier-monitor") || command.contains("chrome_crashpad_handler") { return true }
