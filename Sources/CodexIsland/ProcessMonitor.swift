@@ -908,7 +908,7 @@ class ProcessMonitor: ObservableObject {
         // Codex Desktop / 插件运行时进程，不是用户命令。
         // `codex-code-mode-host` 是新版 Code Mode 的长生命周期执行宿主；
         // 它存在不代表有一条用户命令仍在运行。
-        if normalized.contains("codex app-server") || normalized.contains("codex-code-mode-host") || normalized.contains("codex helper") { return true }
+        if isCodexAppServerLaunch(normalized) || normalized.contains("codex-code-mode-host") || normalized.contains("codex helper") { return true }
         if normalized.contains("node_repl") || normalized.contains("skycomputeruseclient") { return true }
         if normalized.contains("playwright-mcp") || normalized.contains("xcodebuildmcp") { return true }
         if normalized.contains("extension-host") || normalized.contains("bare-modifier-monitor") || normalized.contains("chrome_crashpad_handler") { return true }
@@ -993,6 +993,15 @@ class ProcessMonitor: ObservableObject {
         return tokens[..<shadcnIndex].allSatisfy { token in
             allowedPrefixTokens.contains(token) || token.hasPrefix("-") || token.contains("=")
         }
+    }
+
+    private static func isCodexAppServerLaunch(_ command: String) -> Bool {
+        let tokens = command
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+
+        guard tokens.first == "codex" else { return false }
+        return tokens.dropFirst().contains("app-server")
     }
 
     private static func executableTokenName(_ token: String) -> String {
