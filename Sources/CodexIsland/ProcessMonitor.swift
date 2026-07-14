@@ -578,7 +578,15 @@ class ProcessMonitor: ObservableObject {
 
     // 注册一个新的子进程命令
     private func registerChild(_ childPID: Int32, command: String, zshPID: Int32) {
-                let category = Self.categorizeCommand(command)
+        // 所有注册路径的最后一道入口保护。调用方通常已过滤，但新路径或
+        // argv 短暂形态不应有机会把 MCP 宿主写入 trackedChildren。
+        guard !Self.isNoise(command) else {
+            pendingChildren.remove(childPID)
+            candidates.removeValue(forKey: childPID)
+            return
+        }
+
+        let category = Self.categorizeCommand(command)
         let displayName = makeDisplayName(command)
         let compactName = makeCompactName(command)
 
@@ -681,6 +689,9 @@ class ProcessMonitor: ObservableObject {
 
     // 发布完成事件到主线程
     private func publishCompletedEvent(_ event: CommandEvent) {
+        // 防止早期注册时漏网的后台宿主进入历史、短命令闪现或 burst。
+        guard !Self.isNoise(event.command) else { return }
+
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.commandHistory.insert(event, at: 0)
@@ -756,7 +767,9 @@ class ProcessMonitor: ObservableObject {
         // 只有存活超过 1s 的才算 active（grace period）
         let now = Date()
         let sorted = trackedChildren.values
-            .filter { now.timeIntervalSince($0.startTime) >= 1.0 }
+            // 发布 UI 前再次过滤，保证即使某条注册路径漏掉入口 guard，
+            // MCP/内部宿主也不会进入 active count 或展开态。
+            .filter { !Self.isNoise($0.command) && now.timeIntervalSince($0.startTime) >= 1.0 }
             .sorted { $0.startTime < $1.startTime }
         let commands = sorted.map { event in
             CommandInfo(
@@ -881,54 +894,110 @@ class ProcessMonitor: ObservableObject {
     // MARK: - 噪音过滤
 
     static func isNoise(_ command: String) -> Bool {
-        let lower = command.lowercased()
+        let normalized = normalizedForNoiseMatching(command)
 
         // CodexIsland 自身
-        if command.contains("CodexIsland") || command.contains("codexisland") { return true }
+        if normalized.contains("codexisland") { return true }
         // 其他 hook / 通知桥内部命令。它们是状态同步副作用，不应占用完成态。
-        if lower.contains("clawd on desk.app") || lower.contains("codex-hook.js") { return true }
-        if lower.hasPrefix("agently-cli message ") || lower.contains(" agently-cli message ") { return true }
+        if normalized.contains("clawd on desk.app") || normalized.contains("codex-hook.js") { return true }
+        if normalized.hasPrefix("agently-cli message ") || normalized.contains(" agently-cli message ") { return true }
         // shell 载体（包括子 shell）
-        if command == "zsh" || command == "-zsh" || command == "sh" || command == "bash" || command == "fish" { return true }
-        if command.hasSuffix("/zsh") || command.hasSuffix("/sh") || command.hasSuffix("/bash") || command.hasSuffix("/fish") { return true }
-        if command.hasPrefix("zsh -") || command.hasPrefix("sh -") || command.hasPrefix("bash -") || command.hasPrefix("fish -") { return true }
+        if normalized == "zsh" || normalized == "-zsh" || normalized == "sh" || normalized == "bash" || normalized == "fish" { return true }
+        if normalized.hasSuffix("/zsh") || normalized.hasSuffix("/sh") || normalized.hasSuffix("/bash") || normalized.hasSuffix("/fish") { return true }
+        if normalized.hasPrefix("zsh -") || normalized.hasPrefix("sh -") || normalized.hasPrefix("bash -") || normalized.hasPrefix("fish -") { return true }
         // Codex Desktop / 插件运行时进程，不是用户命令。
         // `codex-code-mode-host` 是新版 Code Mode 的长生命周期执行宿主；
         // 它存在不代表有一条用户命令仍在运行。
-        if command.contains("codex app-server") || lower.contains("codex-code-mode-host") || command.contains("Codex Helper") { return true }
-        if command.contains("node_repl") || command.contains("SkyComputerUseClient") { return true }
-        if command.contains("playwright-mcp") || command.contains("xcodebuildmcp") { return true }
-        if command.contains("extension-host") || command.contains("bare-modifier-monitor") || command.contains("chrome_crashpad_handler") { return true }
+        if normalized.contains("codex app-server") || normalized.contains("codex-code-mode-host") || normalized.contains("codex helper") { return true }
+        if normalized.contains("node_repl") || normalized.contains("skycomputeruseclient") { return true }
+        if normalized.contains("playwright-mcp") || normalized.contains("xcodebuildmcp") { return true }
+        if normalized.contains("extension-host") || normalized.contains("bare-modifier-monitor") || normalized.contains("chrome_crashpad_handler") { return true }
         // MCP 相关进程（由 language_server 管理，不是用户命令）
-        if command.contains("mcp-server") || command.contains("mcp-remote") { return true }
-        if command.contains("@modelcontextprotocol/") { return true }
+        if normalized.contains("mcp-server") || normalized.contains("mcp-remote") { return true }
+        if normalized.contains("@modelcontextprotocol/") { return true }
+        // shadcn MCP 的 argv 在不同启动层可能表现为 npm/npx/node，且前面可能
+        // 带 env/arch 包装。按 token 识别，避免依赖单一字符串前缀。
+        if isShadcnMCPLaunch(normalized) { return true }
         // MCP 运行时子进程（node cli.js run-driver 等）
-        if command.contains("run-driver") || command.contains("cli.js run") { return true }
+        if normalized.contains("run-driver") || normalized.contains("cli.js run") { return true }
         // 裸 npm/npx/node（AG 启动时 MCP 进程 argv 读取不完整，只返回 "npm"）
-        if command == "npm" || command == "npx" || command == "node" { return true }
+        if normalized == "npm" || normalized == "npx" || normalized == "node" { return true }
         // Node.js/npm/npx MCP 子进程
-        if command.hasPrefix("npm exec ") && (command.contains("mcp") || command.contains("@stripe") || command.contains("@supabase") || command.contains("chrome-devtools")) { return true }
-        if command.hasPrefix("npx ") && (command.contains("mcp") || command.contains("@stripe") || command.contains("@supabase") || command.contains("chrome-devtools")) { return true }
+        if normalized.hasPrefix("npm exec ") && (normalized.contains("mcp") || normalized.contains("@stripe") || normalized.contains("@supabase") || normalized.contains("chrome-devtools")) { return true }
+        if normalized.hasPrefix("npx ") && (normalized.contains("mcp") || normalized.contains("@stripe") || normalized.contains("@supabase") || normalized.contains("chrome-devtools")) { return true }
         // node cli.js --version（AG 启动时内部检查）
-        if command.hasPrefix("node ") && command.contains("cli.js") { return true }
+        if normalized.hasPrefix("node ") && normalized.contains("cli.js") { return true }
         // node npx -y <mcp-package>（AG 固定用这种形式启动所有 MCP 服务器，全部过滤）
         // 例：node npx -y chrome-devtools-mcp@latest --...
-        if command.hasPrefix("node npx") { return true }
+        if normalized.hasPrefix("node npx") { return true }
         // node + 其他已知 MCP 包名关键词（防止形式变化）
-        if command.hasPrefix("node ") && (command.contains("mcp") || command.contains("chrome-devtools") || command.contains("brave-search") || command.contains("sequential-thinking")) { return true }
+        if normalized.hasPrefix("node ") && (normalized.contains("mcp") || normalized.contains("chrome-devtools") || normalized.contains("brave-search") || normalized.contains("sequential-thinking")) { return true }
         // uv（Python MCP server runner）
-        if command.hasPrefix("uv ") && command.contains("run") { return true }
+        if normalized.hasPrefix("uv ") && normalized.contains("run") { return true }
         // Playwright（AG 内置浏览器自动化）
-        if command.contains("ms-playwright") { return true }
+        if normalized.contains("ms-playwright") { return true }
         // macOS 系统噪音
-        if command.contains("log stream") { return true }
+        if normalized.contains("log stream") { return true }
         // conda shell 初始化噪音
-        if command.contains("conda shell") || command.contains("conda activate") { return true }
+        if normalized.contains("conda shell") || normalized.contains("conda activate") { return true }
         // git ls-remote：fetch 远程引用列表，非用户操作
-        if command.hasPrefix("git ls-remote") || command.contains(" git ls-remote") { return true }
+        if normalized.hasPrefix("git ls-remote") || normalized.contains(" git ls-remote") { return true }
         // zsh dotdir init 噪音
-        if command.contains("$ZDOTDIR") { return true }
+        if normalized.contains("$zdotdir") { return true }
         return false
+    }
+
+    private static func normalizedForNoiseMatching(_ command: String) -> String {
+        var tokens = command
+            .replacingOccurrences(of: "\n", with: " ")
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { String($0).lowercased() }
+
+        // CommandDisplayFormatter 会隐藏这些包装器；过滤器必须在同一语义层匹配，
+        // 否则原始的 `env node ...` 会漏网，界面却显示成 `node ...`。
+        while let first = tokens.first {
+            let executable = executableTokenName(first)
+            if executable == "env" || executable == "command" {
+                tokens.removeFirst()
+                while let next = tokens.first, next.contains("=") && !next.hasPrefix("-") {
+                    tokens.removeFirst()
+                }
+                continue
+            }
+            if executable == "arch" {
+                tokens.removeFirst()
+                while let next = tokens.first, next.hasPrefix("-") {
+                    tokens.removeFirst()
+                }
+                continue
+            }
+            break
+        }
+
+        if !tokens.isEmpty {
+            tokens[0] = executableTokenName(tokens[0])
+        }
+        return tokens.joined(separator: " ")
+    }
+
+    private static func isShadcnMCPLaunch(_ command: String) -> Bool {
+        let tokens = command
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+
+        guard let shadcnIndex = tokens.firstIndex(where: { $0 == "shadcn" || $0.hasPrefix("shadcn@") }),
+              shadcnIndex + 1 < tokens.count,
+              tokens[shadcnIndex + 1] == "mcp" else { return false }
+
+        let allowedPrefixTokens: Set<String> = ["node", "npm", "npx", "exec", "env", "command", "arch", "--"]
+        return tokens[..<shadcnIndex].allSatisfy { token in
+            allowedPrefixTokens.contains(token) || token.hasPrefix("-") || token.contains("=")
+        }
+    }
+
+    private static func executableTokenName(_ token: String) -> String {
+        let unquoted = token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`;"))
+        return (unquoted as NSString).lastPathComponent
     }
 
     // MARK: - 命令分类

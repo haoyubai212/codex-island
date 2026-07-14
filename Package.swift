@@ -20,5 +20,10 @@ let package = Package(
             name: "CodexIslandCLI",
             path: "Sources/CodexIslandCLI"
         ),
+        .testTarget(
+            name: "CodexIslandTests",
+            dependencies: ["CodexIslandApp"],
+            path: "Tests/CodexIslandTests"
+        ),
     ]
 )
