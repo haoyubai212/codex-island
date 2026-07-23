@@ -120,6 +120,7 @@ Codex Island 没有菜单栏图标。展开灵动岛后，点击右下角 Codex 
 - 进程监控：查找 Codex host 进程，并通过 `libproc` + `kqueue` 监听子进程。
 - Hooks：`UserPromptSubmit` 和 `Stop` 负责思考/完成动画；`PreToolUse` 和 `PostToolUse` 提供更快的命令元数据。
 - 事件文件：hooks 会把精简后的 JSONL 事件追加到 `~/.codex-island/events.jsonl`。
+- 事件轮转：主事件文件达到约 5 MB 时自动轮转，并只保留一个约 5 MB 的备份，避免日志无限增长。
 - 更新检查：app 启动时检查保存的源码仓库路径，每天最多检查一次。源码仓库路径会在 `codexisland upgrade` 时写入配置。
 
 ## 隐私

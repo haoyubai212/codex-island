@@ -491,17 +491,12 @@ class ProcessMonitor: ObservableObject {
                         continue
                     }
 
-                    // 非 zsh 的直接子进程（git, swift, curl 等）→ 立即读 argv 注册
-                    // language_server spawn 的进程 exec 已完成，无需 300ms grace
-                    if let cmdString = commandStringForDisplay(pid: childPID), !Self.isNoise(cmdString) {
-                        registerChild(childPID, command: cmdString, zshPID: zshPID)
-                        log("⚡ 新架构直接命令: PID \(childPID) → \(cmdString)")
-                    } else {
-                        // 读不到 → 短命候选
-                        childToShell[childPID] = zshPID
-                        candidates[childPID] = CandidateChild(shellPID: zshPID, firstSeen: now)
-                        watchChildExit(childPID)
-                    }
+                    // 非 shell 子进程也必须经过 exec grace。fork 后、exec 前读取 argv
+                    // 可能暂时看到父宿主 `codex`，随后实际变为 codex-code-mode-host。
+                    // 立即注册会把长生命周期宿主误报成用户命令，且永不重采样。
+                    childToShell[childPID] = zshPID
+                    candidates[childPID] = CandidateChild(shellPID: zshPID, firstSeen: now)
+                    watchChildExit(childPID)
                     continue
                 }
 
@@ -541,7 +536,10 @@ class ProcessMonitor: ObservableObject {
             if age >= 0.3 {
                 candidates.removeValue(forKey: pid)
                 if let cmdString = commandStringForDisplay(pid: pid) {
-                    if Self.isNoise(cmdString) { continue }
+                    if Self.isNoise(cmdString) {
+                        childToShell.removeValue(forKey: pid)
+                        continue
+                    }
                     registerChild(pid, command: cmdString, zshPID: candidate.shellPID)
                 } else {
                     // argv 还是读不到但还活着 → pending
@@ -550,6 +548,8 @@ class ProcessMonitor: ObservableObject {
                 }
             }
         }
+
+        reconcileTrackedChildren()
 
         // 🐛 兜底：检查 trackedChildren 中的进程是否还活着
         // kqueue 偶尔会漏掉 NOTE_EXIT 事件，导致已退出的命令永远显示为运行中
@@ -576,6 +576,51 @@ class ProcessMonitor: ObservableObject {
         }
     }
 
+    // 重新读取仍存活命令的 argv，修复 fork/exec 窗口内登记的过时身份。
+    // 如果进程已经 exec 成内部宿主，则静默移除，不写入用户命令历史。
+    private func reconcileTrackedChildren() {
+        var changed = false
+
+        for (pid, event) in Array(trackedChildren) where kill(pid, 0) == 0 {
+            guard let currentCommand = commandStringForDisplay(pid: pid) else { continue }
+
+            if Self.isNoise(currentCommand) {
+                trackedChildren.removeValue(forKey: pid)
+                pendingChildren.remove(pid)
+                candidates.removeValue(forKey: pid)
+                childToShell.removeValue(forKey: pid)
+                log("🧹 身份重采样后过滤: PID \(pid) \(event.displayName) → \(currentCommand)")
+                changed = true
+                continue
+            }
+
+            if currentCommand != event.command {
+                trackedChildren[pid] = CommandEvent(
+                    pid: pid,
+                    command: currentCommand,
+                    category: Self.categorizeCommand(currentCommand),
+                    displayName: makeDisplayName(currentCommand),
+                    compactName: makeCompactName(currentCommand),
+                    startTime: event.startTime
+                )
+                log("🔄 命令身份刷新: PID \(pid) \(event.displayName) → \(currentCommand)")
+                changed = true
+            }
+        }
+
+        if changed {
+            updateActiveCommands()
+        }
+    }
+
+    func revalidateActiveCommands() {
+        monitorQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.reconcileTrackedChildren()
+            self.updateActiveCommands()
+        }
+    }
+
     // 注册一个新的子进程命令
     private func registerChild(_ childPID: Int32, command: String, zshPID: Int32) {
         // 所有注册路径的最后一道入口保护。调用方通常已过滤，但新路径或
@@ -583,6 +628,7 @@ class ProcessMonitor: ObservableObject {
         guard !Self.isNoise(command) else {
             pendingChildren.remove(childPID)
             candidates.removeValue(forKey: childPID)
+            childToShell.removeValue(forKey: childPID)
             return
         }
 
@@ -897,7 +943,7 @@ class ProcessMonitor: ObservableObject {
         let normalized = normalizedForNoiseMatching(command)
 
         // CodexIsland 自身
-        if normalized.contains("codexisland") { return true }
+        if normalized.contains("codexisland") || normalized.contains("codex_island_hook.py") { return true }
         // 其他 hook / 通知桥内部命令。它们是状态同步副作用，不应占用完成态。
         if normalized.contains("clawd on desk.app") || normalized.contains("codex-hook.js") { return true }
         if normalized.hasPrefix("agently-cli message ") || normalized.contains(" agently-cli message ") { return true }
@@ -908,7 +954,9 @@ class ProcessMonitor: ObservableObject {
         // Codex Desktop / 插件运行时进程，不是用户命令。
         // `codex-code-mode-host` 是新版 Code Mode 的长生命周期执行宿主；
         // 它存在不代表有一条用户命令仍在运行。
-        if isCodexAppServerLaunch(normalized) || normalized.contains("codex-code-mode-host") || normalized.contains("codex helper") { return true }
+        // 裸 `codex` 是 fork/exec 窗口中最常见的临时宿主形态；真实的
+        // `codex exec ...`、`codex --version` 等仍保留。
+        if normalized == "codex" || isCodexAppServerLaunch(normalized) || normalized.contains("codex-code-mode-host") || normalized.contains("codex helper") { return true }
         if normalized.contains("node_repl") || normalized.contains("skycomputeruseclient") { return true }
         if normalized.contains("playwright-mcp") || normalized.contains("xcodebuildmcp") { return true }
         if normalized.contains("extension-host") || normalized.contains("bare-modifier-monitor") || normalized.contains("chrome_crashpad_handler") { return true }

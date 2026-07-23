@@ -48,6 +48,19 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         }
     }
 
+    func testFiltersCodexIslandHookAndTransientHostVariants() {
+        let commands = [
+            "codex",
+            "python3 codex_island_hook.py PreToolUse",
+            "/usr/bin/python3 /Users/test/.codex-island/codex_island_hook.py PostToolUse",
+            "Python codex_island_hook.py Stop",
+        ]
+
+        for command in commands {
+            XCTAssertTrue(ProcessMonitor.isNoise(command), "Expected internal Codex noise: \(command)")
+        }
+    }
+
     func testKeepsNormalCodexCLIAndDiagnosticCommands() {
         let commands = [
             "codex exec fix the tests",

@@ -19,6 +19,7 @@ class StatusManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
     private var completedFallbackWork: DispatchWorkItem?
+    private var currentTurnStartedAt: Date?
 
     var elapsedTimeString: String {
         guard let start = taskStartTime else { return "" }
@@ -57,6 +58,7 @@ class StatusManager: ObservableObject {
                 guard let self = self else { return }
                 if self.processMonitor.isRunningCommand {
                     if case .completed = newState {
+                        self.processMonitor.revalidateActiveCommands()
                         self.applyState(newState)
                         self.recomputePresentation()
                     }
@@ -67,10 +69,25 @@ class StatusManager: ObservableObject {
             }
             .store(in: &cancellables)
 
+        codexHookWatcher.$turnStartedAt
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] startedAt in
+                guard let self = self else { return }
+                self.currentTurnStartedAt = startedAt
+                if startedAt != nil {
+                    self.recentToolCalls = []
+                }
+            }
+            .store(in: &cancellables)
+
         codexHookWatcher.$recentToolCalls
             .receive(on: DispatchQueue.main)
             .sink { [weak self] records in
                 guard let self = self else { return }
+                if records.isEmpty {
+                    self.recentToolCalls = []
+                    return
+                }
                 for record in records {
                     if !self.recentToolCalls.contains(where: {
                         $0.toolName == record.toolName && abs($0.timestamp.timeIntervalSince(record.timestamp)) < 1
@@ -78,9 +95,7 @@ class StatusManager: ObservableObject {
                         self.recentToolCalls.insert(record, at: 0)
                     }
                 }
-                if self.recentToolCalls.count > 30 {
-                    self.recentToolCalls = Array(self.recentToolCalls.prefix(30))
-                }
+                self.sortAndTrimRecentToolCalls()
             }
             .store(in: &cancellables)
 
@@ -125,7 +140,11 @@ class StatusManager: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] history in
                 guard let self = self else { return }
-                for event in history.prefix(5) {
+                let visibleHistory = history.lazy.filter { event in
+                    guard let boundary = self.currentTurnStartedAt else { return true }
+                    return event.startTime >= boundary
+                }
+                for event in visibleHistory.prefix(5) {
                     if !self.recentToolCalls.contains(where: {
                         $0.toolName == event.displayName && abs($0.timestamp.timeIntervalSince(event.startTime)) < 1
                     }) {
@@ -140,9 +159,7 @@ class StatusManager: ObservableObject {
                         self.recentToolCalls.insert(record, at: 0)
                     }
                 }
-                if self.recentToolCalls.count > 30 {
-                    self.recentToolCalls = Array(self.recentToolCalls.prefix(30))
-                }
+                self.sortAndTrimRecentToolCalls()
             }
             .store(in: &cancellables)
 
@@ -164,6 +181,13 @@ class StatusManager: ObservableObject {
                 self?.objectWillChange.send()
             }
             .store(in: &cancellables)
+    }
+
+    private func sortAndTrimRecentToolCalls() {
+        recentToolCalls.sort { $0.timestamp > $1.timestamp }
+        if recentToolCalls.count > 30 {
+            recentToolCalls = Array(recentToolCalls.prefix(30))
+        }
     }
 
     private func applyState(_ newState: AGWorkState) {

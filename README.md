@@ -111,6 +111,7 @@ Update fetches the source checkout, resets it to the upstream branch, then runs 
 - Process monitor: finds Codex host processes and watches child processes with `libproc` + `kqueue`.
 - Hooks: `UserPromptSubmit` and `Stop` drive the thinking/completed animation; `PreToolUse` and `PostToolUse` provide fast command metadata.
 - Event file: hooks append compact JSONL events to `~/.codex-island/events.jsonl`.
+- Event rotation: the active event file rotates at roughly 5 MB and keeps one roughly 5 MB backup so logs cannot grow without bound.
 - Update check: the app checks the saved source checkout at startup and at most once per day. The source checkout path is saved during `codexisland upgrade`.
 
 ## Privacy

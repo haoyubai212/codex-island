@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import os
+import Darwin
 
 // MARK: - Codex Hook 事件监控
 // 读取 ~/.codex-island/events.jsonl，由全局 Codex hooks 追加事件。
@@ -12,12 +13,14 @@ class CodexHookWatcher: ObservableObject {
     @Published var recentToolCalls: [ToolCallRecord] = []
     @Published var isTurnActive = false
     @Published var activeTurnCount = 0
+    @Published var turnStartedAt: Date?
 
     private let eventsDir: String
     private let eventsPath: String
     private var fsEventStream: FSEventStreamRef?
     private let serialQueue = DispatchQueue(label: "com.codexisland.codex-hook", qos: .utility)
     private var readOffset: UInt64 = 0
+    private var eventsFileID: UInt64 = 0
     private var shadowIsEnabled = false
     private var activeSessionIDs = Set<String>()
     private var pendingSessionStops: [String: DispatchWorkItem] = [:]
@@ -77,6 +80,7 @@ class CodexHookWatcher: ObservableObject {
                     self.recentToolCalls = []
                     self.isTurnActive = false
                     self.activeTurnCount = 0
+                    self.turnStartedAt = nil
                 }
                 return
             }
@@ -92,6 +96,7 @@ class CodexHookWatcher: ObservableObject {
             }
             let attrs = try FileManager.default.attributesOfItem(atPath: eventsPath)
             readOffset = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
+            eventsFileID = (attrs[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
         } catch {
             Self.logger.error("Failed to prepare Codex hook events file: \(error.localizedDescription, privacy: .public)")
         }
@@ -141,6 +146,16 @@ class CodexHookWatcher: ObservableObject {
         defer { try? handle.close() }
 
         do {
+            var fileInfo = stat()
+            guard fstat(handle.fileDescriptor, &fileInfo) == 0 else { return }
+            let currentFileID = UInt64(fileInfo.st_ino)
+            let currentSize = UInt64(max(0, fileInfo.st_size))
+            if (eventsFileID != 0 && currentFileID != eventsFileID) || currentSize < readOffset {
+                // Hook 日志轮转后 events.jsonl 会被替换为新文件。
+                // 用已打开文件的 inode 判断，避免 rename 竞态读回轮转旧文件。
+                readOffset = 0
+            }
+            eventsFileID = currentFileID
             try handle.seek(toOffset: readOffset)
             let data = handle.readDataToEndOfFile()
             readOffset += UInt64(data.count)
@@ -164,6 +179,10 @@ class CodexHookWatcher: ObservableObject {
 
         switch name {
         case "UserPromptSubmit":
+            DispatchQueue.main.async {
+                self.turnStartedAt = timestamp
+                self.recentToolCalls = []
+            }
             markSessionActive(sessionKey)
             publishState(.thinking)
 
