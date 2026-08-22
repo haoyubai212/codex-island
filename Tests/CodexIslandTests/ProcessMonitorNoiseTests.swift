@@ -34,6 +34,35 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         }
     }
 
+    func testFiltersSplineMCPLaunchVariants() {
+        let commands = [
+            "Spline spline-mcp.cjs",
+            "/Applications/Spline.app/Contents/MacOS/Spline /Applications/Spline.app/Contents/Resources/spline-mcp.cjs",
+            "env /Applications/Spline.app/Contents/MacOS/Spline /Applications/Spline.app/Contents/Resources/spline-mcp.cjs",
+            "arch -arm64 /Applications/Spline.app/Contents/MacOS/Spline /Applications/Spline.app/Contents/Resources/spline-mcp.cjs",
+            "  SPLINE   /Applications/Spline.app/Contents/Resources/SPLINE-MCP.CJS  ",
+        ]
+
+        for command in commands {
+            XCTAssertTrue(ProcessMonitor.isNoise(command), "Expected Spline MCP noise: \(command)")
+        }
+    }
+
+    func testKeepsNormalSplineAndDiagnosticCommands() {
+        let commands = [
+            "Spline",
+            "/Applications/Spline.app/Contents/MacOS/Spline project.spline",
+            "open -a Spline project.spline",
+            "rg spline-mcp.cjs",
+            "echo Spline spline-mcp.cjs",
+            "node spline-preview.cjs",
+        ]
+
+        for command in commands {
+            XCTAssertFalse(ProcessMonitor.isNoise(command), "Expected user command: \(command)")
+        }
+    }
+
     func testFiltersCodexAppServerLaunchVariants() {
         let commands = [
             "codex app-server",

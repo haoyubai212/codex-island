@@ -963,6 +963,9 @@ class ProcessMonitor: ObservableObject {
         // MCP 相关进程（由 language_server 管理，不是用户命令）
         if normalized.contains("mcp-server") || normalized.contains("mcp-remote") { return true }
         if normalized.contains("@modelcontextprotocol/") { return true }
+        // Spline Desktop 使用自身可执行文件承载 stdio MCP，不经过 node/npm/npx。
+        // 必须同时匹配 Spline executable 与官方 bridge 脚本，避免隐藏普通 Spline 启动。
+        if isSplineMCPLaunch(normalized) { return true }
         // shadcn MCP 的 argv 在不同启动层可能表现为 npm/npx/node，且前面可能
         // 带 env/arch 包装。按 token 识别，避免依赖单一字符串前缀。
         if isShadcnMCPLaunch(normalized) { return true }
@@ -1041,6 +1044,15 @@ class ProcessMonitor: ObservableObject {
         return tokens[..<shadcnIndex].allSatisfy { token in
             allowedPrefixTokens.contains(token) || token.hasPrefix("-") || token.contains("=")
         }
+    }
+
+    private static func isSplineMCPLaunch(_ command: String) -> Bool {
+        let tokens = command
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+
+        guard tokens.first == "spline" else { return false }
+        return tokens.dropFirst().contains("spline-mcp.cjs")
     }
 
     private static func isCodexAppServerLaunch(_ command: String) -> Bool {
