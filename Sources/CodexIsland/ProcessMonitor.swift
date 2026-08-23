@@ -963,6 +963,9 @@ class ProcessMonitor: ObservableObject {
         // MCP 相关进程（由 language_server 管理，不是用户命令）
         if normalized.contains("mcp-server") || normalized.contains("mcp-remote") { return true }
         if normalized.contains("@modelcontextprotocol/") { return true }
+        // Blender 官方 MCP 的配置入口是 uvx，运行时会改写成 `uv tool uvx`，
+        // 随后再派生 Python `blender-mcp`。三种形态都属于同一后台 stdio 服务。
+        if isOfficialBlenderMCPLaunch(normalized) { return true }
         // Spline Desktop 使用自身可执行文件承载 stdio MCP，不经过 node/npm/npx。
         // 必须同时匹配 Spline executable 与官方 bridge 脚本，避免隐藏普通 Spline 启动。
         if isSplineMCPLaunch(normalized) { return true }
@@ -1053,6 +1056,33 @@ class ProcessMonitor: ObservableObject {
 
         guard tokens.first == "spline" else { return false }
         return tokens.dropFirst().contains("spline-mcp.cjs")
+    }
+
+    private static func isOfficialBlenderMCPLaunch(_ command: String) -> Bool {
+        let rawTokens = command
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        let tokenNames = rawTokens.map(executableTokenName)
+
+        guard let executable = tokenNames.first else { return false }
+
+        // uvx 配置形态与 uv 运行时形态都必须同时指向 Blender 官方仓库和
+        // blender-mcp 入口，避免吞掉其他正常 uvx/uv tool 命令。
+        if executable == "uv" || executable == "uvx" {
+            let hasOfficialSource = rawTokens.contains {
+                $0.contains("projects.blender.org/lab/blender_mcp.git")
+            }
+            let hasServerEntry = tokenNames.dropFirst().contains("blender-mcp")
+            return hasOfficialSource && hasServerEntry
+        }
+
+        // 覆盖 uvx 派生的 Python 子进程，以及未来可能直接 exec 的入口。
+        if executable == "blender-mcp" { return true }
+        if executable == "python" || executable.hasPrefix("python3") {
+            return tokenNames.dropFirst().contains("blender-mcp")
+        }
+
+        return false
     }
 
     private static func isCodexAppServerLaunch(_ command: String) -> Bool {

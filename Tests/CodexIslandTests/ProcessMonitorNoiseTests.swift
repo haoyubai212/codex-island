@@ -63,6 +63,36 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         }
     }
 
+    func testFiltersOfficialBlenderMCPLaunchChain() {
+        let commands = [
+            "/opt/homebrew/bin/uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp --with mcp[cli]<2 blender-mcp",
+            "/opt/homebrew/bin/uv tool uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp --with mcp[cli]<2 blender-mcp",
+            "env uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp blender-mcp",
+            "arch -arm64 uv tool uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp blender-mcp",
+            "/Users/test/.cache/uv/archive-v0/test/bin/python /Users/test/.cache/uv/archive-v0/test/bin/blender-mcp",
+            "/Users/test/.cache/uv/archive-v0/test/bin/blender-mcp",
+        ]
+
+        for command in commands {
+            XCTAssertTrue(ProcessMonitor.isNoise(command), "Expected Blender MCP noise: \(command)")
+        }
+    }
+
+    func testKeepsNormalUVPythonAndBlenderDiagnostics() {
+        let commands = [
+            "uvx ruff check .",
+            "uv tool install ruff",
+            "uvx --from git+https://example.com/tools.git blender-helper",
+            "python blender-preview.py",
+            "rg blender-mcp",
+            "echo uv tool uvx blender-mcp",
+        ]
+
+        for command in commands {
+            XCTAssertFalse(ProcessMonitor.isNoise(command), "Expected user command: \(command)")
+        }
+    }
+
     func testFiltersCodexAppServerLaunchVariants() {
         let commands = [
             "codex app-server",
