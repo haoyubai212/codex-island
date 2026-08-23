@@ -67,6 +67,9 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         let commands = [
             "/opt/homebrew/bin/uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp --with mcp[cli]<2 blender-mcp",
             "/opt/homebrew/bin/uv tool uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp --with mcp[cli]<2 blender-mcp",
+            // ProcessSnapshotter.commandString(of:) 的真实 5-token 截断形态。
+            "uv tool uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp",
+            "uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp",
             "env uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp blender-mcp",
             "arch -arm64 uv tool uvx --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp blender-mcp",
             "/Users/test/.cache/uv/archive-v0/test/bin/python /Users/test/.cache/uv/archive-v0/test/bin/blender-mcp",
@@ -83,6 +86,8 @@ final class ProcessMonitorNoiseTests: XCTestCase {
             "uvx ruff check .",
             "uv tool install ruff",
             "uvx --from git+https://example.com/tools.git blender-helper",
+            "uv tool uvx --from git+https://example.com/tools.git",
+            "uv tool install --from git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp",
             "python blender-preview.py",
             "rg blender-mcp",
             "echo uv tool uvx blender-mcp",

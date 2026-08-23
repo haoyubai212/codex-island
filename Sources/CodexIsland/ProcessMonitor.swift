@@ -1066,14 +1066,15 @@ class ProcessMonitor: ObservableObject {
 
         guard let executable = tokenNames.first else { return false }
 
-        // uvx 配置形态与 uv 运行时形态都必须同时指向 Blender 官方仓库和
-        // blender-mcp 入口，避免吞掉其他正常 uvx/uv tool 命令。
+        // ProcessSnapshotter 只保留 argv 前 5 项，所以运行时常只剩
+        // `uv tool uvx --from <官方仓库>`，尾部 blender-mcp 已不可见。
+        // 官方仓库 + uvx launcher 已足够唯一，且不会吞掉其他 uvx 命令。
         if executable == "uv" || executable == "uvx" {
             let hasOfficialSource = rawTokens.contains {
                 $0.contains("projects.blender.org/lab/blender_mcp.git")
             }
-            let hasServerEntry = tokenNames.dropFirst().contains("blender-mcp")
-            return hasOfficialSource && hasServerEntry
+            let isUVXLauncher = executable == "uvx" || tokenNames.dropFirst().contains("uvx")
+            return hasOfficialSource && isUVXLauncher
         }
 
         // 覆盖 uvx 派生的 Python 子进程，以及未来可能直接 exec 的入口。
