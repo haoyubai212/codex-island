@@ -138,4 +138,45 @@ final class ProcessMonitorNoiseTests: XCTestCase {
             XCTAssertFalse(ProcessMonitor.isNoise(command), "Expected user command: \(command)")
         }
     }
+
+    func testFiltersBundledCodexAppToolsServer() {
+        let workingDirectories = [
+            "/Applications/ChatGPT.app/Contents/Resources/plugins/openai-bundled/plugins/codex-app-tools",
+            "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/codex-app-tools",
+        ]
+        let commands = [
+            "node ./server.mjs",
+            "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node ./server.mjs",
+            "NODE server.mjs",
+        ]
+
+        for workingDirectory in workingDirectories {
+            for command in commands {
+                XCTAssertTrue(
+                    ProcessMonitor.isNoise(command, workingDirectory: workingDirectory),
+                    "Expected bundled Codex app tools noise: \(command) in \(workingDirectory)"
+                )
+            }
+        }
+    }
+
+    func testKeepsUserNodeServerCommands() {
+        let commands = [
+            "node ./server.mjs",
+            "/opt/homebrew/bin/node ./server.mjs",
+            "node server.mjs --port 3000",
+        ]
+
+        for command in commands {
+            XCTAssertFalse(ProcessMonitor.isNoise(command), "Expected user command without cwd: \(command)")
+            XCTAssertFalse(
+                ProcessMonitor.isNoise(command, workingDirectory: "/Users/test/project"),
+                "Expected user project command: \(command)"
+            )
+            XCTAssertFalse(
+                ProcessMonitor.isNoise(command, workingDirectory: "/Users/test/plugins/openai-bundled/plugins/codex-app-tools"),
+                "Expected non-app-bundle command: \(command)"
+            )
+        }
+    }
 }

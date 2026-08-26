@@ -33,6 +33,23 @@ struct ProcessSnapshotter {
         return String(cString: pathBuffer)
     }
 
+    // 获取进程当前工作目录。用于识别命令名完全相同、但来源不同的后台服务，
+    // 例如 Codex bundled app tools 与用户项目都可能显示为 `node ./server.mjs`。
+    static func currentWorkingDirectory(of pid: Int32) -> String? {
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.stride)
+        let result = withUnsafeMutablePointer(to: &info) {
+            proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, $0, size)
+        }
+        guard result == size else { return nil }
+
+        return withUnsafeBytes(of: info.pvi_cdir.vip_path) { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return nil }
+            let path = String(cString: baseAddress.assumingMemoryBound(to: CChar.self))
+            return path.isEmpty ? nil : path
+        }
+    }
+
     // 获取进程完整 argv（通过 sysctl KERN_PROCARGS2）
     static func argv(of pid: Int32) -> [String]? {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
@@ -480,7 +497,7 @@ class ProcessMonitor: ObservableObject {
                     // 临时 shell → 穿透一层读取内部命令
                     if let path = ProcessSnapshotter.executablePath(of: childPID),
                        ProcessSnapshotter.isShellExecutablePath(path) {
-                        if let cmd = commandStringForDisplay(pid: childPID), !Self.isNoise(cmd) {
+                        if let cmd = commandStringForDisplay(pid: childPID), !Self.isNoiseProcess(cmd, pid: childPID) {
                             registerChild(childPID, command: cmd, zshPID: zshPID)
                             log("🎯 Codex shell 命令: PID \(childPID) → \(cmd)")
                         } else {
@@ -521,7 +538,7 @@ class ProcessMonitor: ObservableObject {
                     }
                 } else {
                     // 300ms+ → 尝试读 argv 做短命令闪现（exec 已完成）
-                    if let cmdString = commandStringForDisplay(pid: pid), !Self.isNoise(cmdString) {
+                    if let cmdString = commandStringForDisplay(pid: pid), !Self.isNoiseProcess(cmdString, pid: pid) {
                         registerChild(pid, command: cmdString, zshPID: candidate.shellPID)
                     } else {
                         DispatchQueue.main.async { [weak self] in
@@ -536,7 +553,7 @@ class ProcessMonitor: ObservableObject {
             if age >= 0.3 {
                 candidates.removeValue(forKey: pid)
                 if let cmdString = commandStringForDisplay(pid: pid) {
-                    if Self.isNoise(cmdString) {
+                    if Self.isNoiseProcess(cmdString, pid: pid) {
                         childToShell.removeValue(forKey: pid)
                         continue
                     }
@@ -584,7 +601,7 @@ class ProcessMonitor: ObservableObject {
         for (pid, event) in Array(trackedChildren) where kill(pid, 0) == 0 {
             guard let currentCommand = commandStringForDisplay(pid: pid) else { continue }
 
-            if Self.isNoise(currentCommand) {
+            if Self.isNoiseProcess(currentCommand, pid: pid) {
                 trackedChildren.removeValue(forKey: pid)
                 pendingChildren.remove(pid)
                 candidates.removeValue(forKey: pid)
@@ -625,7 +642,7 @@ class ProcessMonitor: ObservableObject {
     private func registerChild(_ childPID: Int32, command: String, zshPID: Int32) {
         // 所有注册路径的最后一道入口保护。调用方通常已过滤，但新路径或
         // argv 短暂形态不应有机会把 MCP 宿主写入 trackedChildren。
-        guard !Self.isNoise(command) else {
+        guard !Self.isNoiseProcess(command, pid: childPID) else {
             pendingChildren.remove(childPID)
             candidates.removeValue(forKey: childPID)
             childToShell.removeValue(forKey: childPID)
@@ -815,7 +832,7 @@ class ProcessMonitor: ObservableObject {
         let sorted = trackedChildren.values
             // 发布 UI 前再次过滤，保证即使某条注册路径漏掉入口 guard，
             // MCP/内部宿主也不会进入 active count 或展开态。
-            .filter { !Self.isNoise($0.command) && now.timeIntervalSince($0.startTime) >= 1.0 }
+            .filter { !Self.isNoiseProcess($0.command, pid: $0.pid) && now.timeIntervalSince($0.startTime) >= 1.0 }
             .sorted { $0.startTime < $1.startTime }
         let commands = sorted.map { event in
             CommandInfo(
@@ -865,7 +882,7 @@ class ProcessMonitor: ObservableObject {
                 if monitoredZshPIDs.contains(childPID) { continue }
 
                 guard let cmdString = commandStringForDisplay(pid: childPID) else { continue }
-                if Self.isNoise(cmdString) { continue }
+                if Self.isNoiseProcess(cmdString, pid: childPID) { continue }
 
                 let event = CommandEvent(
                     pid: childPID,
@@ -939,7 +956,7 @@ class ProcessMonitor: ObservableObject {
 
     // MARK: - 噪音过滤
 
-    static func isNoise(_ command: String) -> Bool {
+    static func isNoise(_ command: String, workingDirectory: String? = nil) -> Bool {
         let normalized = normalizedForNoiseMatching(command)
 
         // CodexIsland 自身
@@ -957,6 +974,9 @@ class ProcessMonitor: ObservableObject {
         // 裸 `codex` 是 fork/exec 窗口中最常见的临时宿主形态；真实的
         // `codex exec ...`、`codex --version` 等仍保留。
         if normalized == "codex" || isCodexAppServerLaunch(normalized) || normalized.contains("codex-code-mode-host") || normalized.contains("codex helper") { return true }
+        // Codex 桌面端 bundled app tools 使用通用命令 `node ./server.mjs`。
+        // 必须结合应用包内工作目录判断，不能吞掉用户项目的同名 Node 服务。
+        if isCodexAppToolsServer(normalized, workingDirectory: workingDirectory) { return true }
         if normalized.contains("node_repl") || normalized.contains("skycomputeruseclient") { return true }
         if normalized.contains("playwright-mcp") || normalized.contains("xcodebuildmcp") { return true }
         if normalized.contains("extension-host") || normalized.contains("bare-modifier-monitor") || normalized.contains("chrome_crashpad_handler") { return true }
@@ -999,6 +1019,10 @@ class ProcessMonitor: ObservableObject {
         // zsh dotdir init 噪音
         if normalized.contains("$zdotdir") { return true }
         return false
+    }
+
+    private static func isNoiseProcess(_ command: String, pid: Int32) -> Bool {
+        isNoise(command, workingDirectory: ProcessSnapshotter.currentWorkingDirectory(of: pid))
     }
 
     private static func normalizedForNoiseMatching(_ command: String) -> String {
@@ -1093,6 +1117,20 @@ class ProcessMonitor: ObservableObject {
 
         guard tokens.first == "codex" else { return false }
         return tokens.dropFirst().contains("app-server")
+    }
+
+    private static func isCodexAppToolsServer(_ command: String, workingDirectory: String?) -> Bool {
+        guard let workingDirectory else { return false }
+
+        let tokens = command
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+        guard tokens.count >= 2, tokens[0] == "node", tokens[1] == "server.mjs" else {
+            return false
+        }
+
+        let bundledDirectorySuffix = ".app/contents/resources/plugins/openai-bundled/plugins/codex-app-tools"
+        return workingDirectory.lowercased().hasSuffix(bundledDirectorySuffix)
     }
 
     private static func executableTokenName(_ token: String) -> String {
