@@ -1142,9 +1142,13 @@ class ProcessMonitor: ObservableObject {
 
     static func categorizeCommand(_ command: String) -> CommandCategory {
         let lower = command.lowercased()
+        let executable = normalizedForNoiseMatching(command)
+            .split(whereSeparator: { $0.isWhitespace })
+            .first
+            .map(String.init)
 
-        // ACPX 小组会（优先匹配）
-        if lower.contains("acpx") || lower.contains("acp ") {
+        // Agent 协作命令（优先匹配）
+        if executable == "agy" || lower.contains("acpx") || lower.contains("acp ") {
             return .collaboration
         }
         // 浏览器自动化（方案A: CDP Chrome + agent-browser）

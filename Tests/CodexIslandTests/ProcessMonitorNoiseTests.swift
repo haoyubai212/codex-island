@@ -2,6 +2,29 @@ import XCTest
 @testable import CodexIslandApp
 
 final class ProcessMonitorNoiseTests: XCTestCase {
+    func testCategorizesAgyLikeAcpxCollaboration() {
+        let commands = [
+            "agy -p Resume the same camper RV job",
+            "/opt/homebrew/bin/agy -p Build the model",
+            "env AGY_MODE=turbo agy -p Continue",
+            "arch -arm64 agy -p Continue",
+            "  AGY   -p   Continue  ",
+        ]
+
+        for command in commands {
+            let category = ProcessMonitor.categorizeCommand(command)
+            XCTAssertEqual(category, .collaboration, "Expected AGY collaboration command: \(command)")
+            XCTAssertEqual(category.icon, "person.2.fill")
+        }
+
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("acpx exec review"), .collaboration)
+    }
+
+    func testDoesNotCategorizeAgyTextAsCollaboration() {
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("rg -n agy Sources"), .searching)
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("echo agy"), .executing)
+    }
+
     func testFiltersShadcnMCPLaunchVariants() {
         let commands = [
             "node npx shadcn@latest mcp",
