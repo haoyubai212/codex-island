@@ -29,8 +29,30 @@ struct ProcessSnapshotter {
     static func executablePath(of pid: Int32) -> String? {
         var pathBuffer = [UInt8](repeating: 0, count: Int(MAXPATHLEN))
         let result = proc_pidpath(pid, &pathBuffer, UInt32(MAXPATHLEN))
-        guard result > 0 else { return nil }
-        return String(cString: pathBuffer)
+        if result > 0 {
+            return String(cString: pathBuffer)
+        }
+
+        // 当应用二进制在运行期被更新/重写（或二进制被 unlink）时，proc_pidpath 会返回 ENOENT。
+        // 此时从 sysctl KERN_PROCARGS2 读取进程启动时记录的 exec_path 作为 fallback。
+        return executablePathFromProcArgs(of: pid)
+    }
+
+    static func executablePathFromProcArgs(of pid: Int32) -> String? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size: Int = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > 0 else { return nil }
+
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return nil }
+        guard size > MemoryLayout<Int32>.size else { return nil }
+
+        let offset = MemoryLayout<Int32>.size
+        var end = offset
+        while end < size && buffer[end] != 0 { end += 1 }
+        guard end > offset else { return nil }
+
+        return String(bytes: buffer[offset..<end], encoding: .utf8)
     }
 
     // 获取进程当前工作目录。用于识别命令名完全相同、但来源不同的后台服务，
@@ -1158,14 +1180,24 @@ class ProcessMonitor: ObservableObject {
         }
 
         let bundledExecutableSuffix = "/chatcut.app/contents/macos/chatcut"
-        if executablePath?.lowercased().hasSuffix(bundledExecutableSuffix) == true {
-            return true
+        if let executablePath = executablePath?.lowercased() {
+            if executablePath.hasSuffix(bundledExecutableSuffix) {
+                return true
+            }
+            // 显式指向非 ChatCut.app 的外部路径时不作为 MCP 噪音过滤
+            if !executablePath.contains("/chatcut.app/") {
+                return false
+            }
         }
 
         // Hook 事件可能保留完整 argv，但没有 PID 可供读取 executablePath。
         let lowerRawCommand = rawCommand.lowercased()
-        return lowerRawCommand.contains(bundledExecutableSuffix)
-            && lowerRawCommand.contains("/chatcut.app/contents/resources/app.asar/out/main/mcp/server.js")
+        if lowerRawCommand.contains("/chatcut.app/contents/resources/app.asar/out/main/mcp/server.js") {
+            return true
+        }
+
+        // 采样后的两 token 形式：`ChatCut server.js`（且未显式指定非 ChatCut.app 可执行路径）
+        return true
     }
 
     private static func executableTokenName(_ token: String) -> String {

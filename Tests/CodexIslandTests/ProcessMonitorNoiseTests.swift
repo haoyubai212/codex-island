@@ -212,11 +212,14 @@ final class ProcessMonitorNoiseTests: XCTestCase {
             ProcessMonitor.isNoise("ChatCut server.js", executablePath: executablePath),
             "Expected the process snapshot's two-token ChatCut MCP form to be filtered"
         )
+        XCTAssertTrue(
+            ProcessMonitor.isNoise("ChatCut server.js"),
+            "Expected two-token ChatCut server.js to be filtered when executablePath is nil"
+        )
     }
 
     func testKeepsUnrelatedServerJSCommands() {
         XCTAssertFalse(ProcessMonitor.isNoise("node server.js"))
-        XCTAssertFalse(ProcessMonitor.isNoise("ChatCut server.js"))
         XCTAssertFalse(
             ProcessMonitor.isNoise(
                 "ChatCut server.js",
