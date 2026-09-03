@@ -984,7 +984,8 @@ class ProcessMonitor: ObservableObject {
     static func isNoise(
         _ command: String,
         workingDirectory: String? = nil,
-        executablePath: String? = nil
+        executablePath: String? = nil,
+        processArguments: [String]? = nil
     ) -> Bool {
         let normalized = normalizedForNoiseMatching(command)
 
@@ -1006,6 +1007,15 @@ class ProcessMonitor: ObservableObject {
         // Codex 桌面端 bundled app tools 使用通用命令 `node ./server.mjs`。
         // 必须结合应用包内工作目录判断，不能吞掉用户项目的同名 Node 服务。
         if isCodexAppToolsServer(normalized, workingDirectory: workingDirectory) { return true }
+        // Unified Computer Use 会为 browser / computer 服务启动持久化 Node REPL，
+        // 进程展示层只剩 `node launch.mjs`。优先用完整 argv 识别 bundled 脚本路径，
+        // 仅在 argv 不可用时才结合 ChatGPT/Codex 自带 cua_node 路径兜底。
+        if isUnifiedComputerUseLauncher(
+            command,
+            normalizedCommand: normalized,
+            executablePath: executablePath,
+            processArguments: processArguments
+        ) { return true }
         // ChatCut Desktop 为 Codex 启动的 MCP bridge 会被进程采样器压缩成
         // `ChatCut server.js`。结合应用包内可执行路径识别，避免误伤普通
         // Node `server.js` 或其他同名脚本。
@@ -1058,7 +1068,8 @@ class ProcessMonitor: ObservableObject {
         isNoise(
             command,
             workingDirectory: ProcessSnapshotter.currentWorkingDirectory(of: pid),
-            executablePath: ProcessSnapshotter.executablePath(of: pid)
+            executablePath: ProcessSnapshotter.executablePath(of: pid),
+            processArguments: ProcessSnapshotter.argv(of: pid)
         )
     }
 
@@ -1168,6 +1179,44 @@ class ProcessMonitor: ObservableObject {
 
         let bundledDirectorySuffix = ".app/contents/resources/plugins/openai-bundled/plugins/codex-app-tools"
         return workingDirectory.lowercased().hasSuffix(bundledDirectorySuffix)
+    }
+
+    private static func isUnifiedComputerUseLauncher(
+        _ rawCommand: String,
+        normalizedCommand: String,
+        executablePath: String?,
+        processArguments: [String]?
+    ) -> Bool {
+        let normalizedTokens = normalizedCommand
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        guard normalizedTokens.first == "node" else { return false }
+
+        let pluginPathMarker = "/.codex/plugins/cache/openai-bundled/unified-computer-use/"
+        let launcherPathSuffix = "/scripts/launch.mjs"
+        let lowerRawCommand = rawCommand.lowercased()
+        if lowerRawCommand.contains(pluginPathMarker),
+           lowerRawCommand.contains(launcherPathSuffix) {
+            return true
+        }
+
+        let hasBundledLauncherPath = (processArguments ?? []).dropFirst().contains { token in
+            let path = token
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'`;"))
+                .lowercased()
+            return path.contains(pluginPathMarker) && path.hasSuffix(launcherPathSuffix)
+        }
+        if hasBundledLauncherPath { return true }
+
+        // ProcessSnapshotter 的展示命令会把所有绝对参数压成 basename。
+        // 只有原始 argv 读取失败时，才允许 `node launch.mjs` + bundled cua_node
+        // 作为兜底，避免普通 Node 项目中的同名脚本被隐藏。
+        guard processArguments == nil,
+              normalizedCommand == "node launch.mjs",
+              let executablePath = executablePath?.lowercased() else {
+            return false
+        }
+        return executablePath.hasSuffix(".app/contents/resources/cua_node/bin/node")
     }
 
     private static func isChatCutMCPServer(

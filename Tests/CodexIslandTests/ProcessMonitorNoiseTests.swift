@@ -225,6 +225,59 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         }
     }
 
+    func testFiltersBundledUnifiedComputerUseLauncher() {
+        let scriptPath = "/Users/test/.codex/plugins/cache/openai-bundled/unified-computer-use/26.901.20858/scripts/launch.mjs"
+        let chatGPTNode = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        let codexNode = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
+
+        XCTAssertTrue(
+            ProcessMonitor.isNoise("\(chatGPTNode) \(scriptPath)"),
+            "Expected the full bundled launcher command to be filtered"
+        )
+        XCTAssertTrue(
+            ProcessMonitor.isNoise(
+                "node launch.mjs",
+                executablePath: chatGPTNode,
+                processArguments: [chatGPTNode, scriptPath]
+            ),
+            "Expected the real process snapshot plus full argv to be filtered"
+        )
+        XCTAssertTrue(
+            ProcessMonitor.isNoise("node launch.mjs", executablePath: codexNode),
+            "Expected the bundled cua_node fallback to cover Codex.app when argv is unavailable"
+        )
+    }
+
+    func testKeepsUserLaunchMJSCommands() {
+        let chatGPTNode = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+
+        XCTAssertFalse(ProcessMonitor.isNoise("node launch.mjs"))
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "node /Users/test/project/launch.mjs",
+                executablePath: "/opt/homebrew/bin/node"
+            )
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "node launch.mjs",
+                executablePath: chatGPTNode,
+                processArguments: [chatGPTNode, "/Users/test/project/launch.mjs"]
+            ),
+            "Expected full argv to keep a user script even when launched with cua_node"
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "node /Users/test/.codex/plugins/cache/openai-bundled/unified-computer-use/26.901.20858/scripts/worker.mjs"
+            )
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "rg -n /Users/test/.codex/plugins/cache/openai-bundled/unified-computer-use/26.901.20858/scripts/launch.mjs"
+            )
+        )
+    }
+
     func testFiltersChatCutMCPServer() {
         let executablePath = "/Applications/ChatCut.app/Contents/MacOS/ChatCut"
         let fullCommand = "\(executablePath) /Applications/ChatCut.app/Contents/Resources/app.asar/out/main/mcp/server.js"
