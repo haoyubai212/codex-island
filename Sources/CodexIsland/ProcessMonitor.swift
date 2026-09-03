@@ -1016,6 +1016,15 @@ class ProcessMonitor: ObservableObject {
             executablePath: executablePath,
             processArguments: processArguments
         ) { return true }
+        // ChatGPT/Codex 为 artifact template picker 启动的 bundled Node 服务。
+        // 它的 cwd 是当前用户项目，不能复用 Codex App Tools 的 cwd 判定；
+        // 必须依赖完整 argv 中的 app bundle 脚本路径。
+        if isArtifactTemplatePickerServer(
+            command,
+            normalizedCommand: normalized,
+            executablePath: executablePath,
+            processArguments: processArguments
+        ) { return true }
         // ChatCut Desktop 为 Codex 启动的 MCP bridge 会被进程采样器压缩成
         // `ChatCut server.js`。结合应用包内可执行路径识别，避免误伤普通
         // Node `server.js` 或其他同名脚本。
@@ -1213,6 +1222,43 @@ class ProcessMonitor: ObservableObject {
         // 作为兜底，避免普通 Node 项目中的同名脚本被隐藏。
         guard processArguments == nil,
               normalizedCommand == "node launch.mjs",
+              let executablePath = executablePath?.lowercased() else {
+            return false
+        }
+        return executablePath.hasSuffix(".app/contents/resources/cua_node/bin/node")
+    }
+
+    private static func isArtifactTemplatePickerServer(
+        _ rawCommand: String,
+        normalizedCommand: String,
+        executablePath: String?,
+        processArguments: [String]?
+    ) -> Bool {
+        let normalizedTokens = normalizedCommand
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+        guard normalizedTokens.count >= 2,
+              normalizedTokens[0] == "node",
+              normalizedTokens[1] == "server.mjs" else {
+            return false
+        }
+
+        let bundledScriptSuffix = ".app/contents/resources/artifact-template-picker/server.mjs"
+        let lowerRawCommand = rawCommand.lowercased()
+        if lowerRawCommand.contains(bundledScriptSuffix) { return true }
+
+        let hasBundledScriptPath = (processArguments ?? []).dropFirst().contains { token in
+            token
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'`;"))
+                .lowercased()
+                .hasSuffix(bundledScriptSuffix)
+        }
+        if hasBundledScriptPath { return true }
+
+        // 与 Unified Computer Use 相同：完整 argv 可用时以其为准，避免误伤
+        // 被 cua_node 显式启动的用户脚本；只有 argv 缺失才允许 executablePath 兜底。
+        guard processArguments == nil,
+              normalizedCommand == "node server.mjs",
               let executablePath = executablePath?.lowercased() else {
             return false
         }

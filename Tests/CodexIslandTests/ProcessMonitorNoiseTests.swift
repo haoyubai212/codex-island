@@ -278,6 +278,64 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         )
     }
 
+    func testFiltersBundledArtifactTemplatePickerServer() {
+        let chatGPTNode = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        let chatGPTScript = "/Applications/ChatGPT.app/Contents/Resources/artifact-template-picker/server.mjs"
+        let codexNode = "/Applications/Codex.app/Contents/Resources/cua_node/bin/node"
+        let codexScript = "/Applications/Codex.app/Contents/Resources/artifact-template-picker/server.mjs"
+
+        XCTAssertTrue(
+            ProcessMonitor.isNoise(chatGPTNode + " " + chatGPTScript),
+            "Expected the full ChatGPT artifact template picker command to be filtered"
+        )
+        XCTAssertTrue(
+            ProcessMonitor.isNoise(
+                "node server.mjs",
+                executablePath: chatGPTNode,
+                processArguments: [chatGPTNode, chatGPTScript]
+            ),
+            "Expected the real process snapshot plus full argv to be filtered"
+        )
+        XCTAssertTrue(
+            ProcessMonitor.isNoise(codexNode + " " + codexScript),
+            "Expected the Codex.app bundled variant to be filtered"
+        )
+        XCTAssertTrue(
+            ProcessMonitor.isNoise("node server.mjs", executablePath: chatGPTNode),
+            "Expected bundled cua_node fallback when argv is unavailable"
+        )
+    }
+
+    func testKeepsUserServerMJSCommandsWithProcessArguments() {
+        let chatGPTNode = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+
+        XCTAssertFalse(ProcessMonitor.isNoise("node server.mjs"))
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "node /Users/test/project/server.mjs",
+                executablePath: "/opt/homebrew/bin/node"
+            )
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "node server.mjs",
+                executablePath: chatGPTNode,
+                processArguments: [chatGPTNode, "/Users/test/project/server.mjs"]
+            ),
+            "Expected full argv to keep a user server even when launched with cua_node"
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "node /Users/test/project/artifact-template-picker/server.mjs"
+            )
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "rg -n /Applications/ChatGPT.app/Contents/Resources/artifact-template-picker/server.mjs"
+            )
+        )
+    }
+
     func testFiltersChatCutMCPServer() {
         let executablePath = "/Applications/ChatCut.app/Contents/MacOS/ChatCut"
         let fullCommand = "\(executablePath) /Applications/ChatCut.app/Contents/Resources/app.asar/out/main/mcp/server.js"
