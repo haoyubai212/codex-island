@@ -252,7 +252,7 @@ class ProcessMonitor: ObservableObject {
     enum CommandCategory: String, Equatable {
         case building, testing, serving, gitOp, searching
         case reading, writing, installing, managing, executing
-        case collaboration, networking, remote, browsing
+        case collaboration, blender, networking, remote, browsing
 
         var icon: String {
             switch self {
@@ -267,6 +267,7 @@ class ProcessMonitor: ObservableObject {
             case .managing:   return "gearshape.fill"
             case .executing:  return "terminal.fill"
             case .collaboration: return "person.2.fill"
+            case .blender:    return "cube.fill"
             case .networking: return "arrow.up.arrow.down.circle.fill"
             case .remote:     return "desktopcomputer"
             case .browsing:   return "cursorarrow.click.2"
@@ -286,6 +287,7 @@ class ProcessMonitor: ObservableObject {
             case .managing:   return .gray
             case .executing:  return .indigo
             case .collaboration: return .pink
+            case .blender:    return Color(red: 0.91, green: 0.49, blue: 0.05)  // Blender 橙 #E87D0D
             case .networking: return .teal
             case .remote:     return .red
             case .browsing:   return Color(red: 0.26, green: 0.52, blue: 0.96)  // Chrome 蓝 #4285F4
@@ -305,6 +307,7 @@ class ProcessMonitor: ObservableObject {
             case .managing:   return "管理进程"
             case .executing:  return "执行命令"
             case .collaboration: return "小组会"
+            case .blender:    return "Blender"
             case .networking: return "网络请求"
             case .remote:     return "远程连接"
             case .browsing:   return "浏览器"
@@ -1217,6 +1220,10 @@ class ProcessMonitor: ObservableObject {
         // Agent 协作命令（优先匹配）
         if executable == "agy" || lower.contains("acpx") || lower.contains("acp ") {
             return .collaboration
+        }
+        // Blender CLI / blenderm 包装命令
+        if executable == "blender" || executable == "blenderm" {
+            return .blender
         }
         // 浏览器自动化（方案A: CDP Chrome + agent-browser）
         if lower.contains("agent-browser") || lower.contains("--cdp") ||

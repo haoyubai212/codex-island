@@ -25,6 +25,28 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         XCTAssertEqual(ProcessMonitor.categorizeCommand("echo agy"), .executing)
     }
 
+    func testCategorizesBlenderCommandsWithCubeIcon() {
+        let commands = [
+            "Blender -b blender/rv-world.blend --python render.py",
+            "/Applications/Blender.app/Contents/MacOS/Blender -b scene.blend",
+            "blenderm render scene.blend",
+            "/opt/homebrew/bin/blenderm render scene.blend",
+            "env BLENDER_USER_CONFIG=/tmp Blender -b scene.blend",
+            "arch -arm64 blenderm render scene.blend",
+        ]
+
+        for command in commands {
+            let category = ProcessMonitor.categorizeCommand(command)
+            XCTAssertEqual(category, .blender, "Expected Blender command: \(command)")
+            XCTAssertEqual(category.icon, "cube.fill")
+        }
+    }
+
+    func testDoesNotCategorizeBlenderTextAsBlenderCommand() {
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("rg -n blender Sources"), .searching)
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("python3 blender_render.py"), .executing)
+    }
+
     func testFiltersShadcnMCPLaunchVariants() {
         let commands = [
             "node npx shadcn@latest mcp",
