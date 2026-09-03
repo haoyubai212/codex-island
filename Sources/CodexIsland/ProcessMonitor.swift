@@ -956,7 +956,11 @@ class ProcessMonitor: ObservableObject {
 
     // MARK: - 噪音过滤
 
-    static func isNoise(_ command: String, workingDirectory: String? = nil) -> Bool {
+    static func isNoise(
+        _ command: String,
+        workingDirectory: String? = nil,
+        executablePath: String? = nil
+    ) -> Bool {
         let normalized = normalizedForNoiseMatching(command)
 
         // CodexIsland 自身
@@ -977,6 +981,10 @@ class ProcessMonitor: ObservableObject {
         // Codex 桌面端 bundled app tools 使用通用命令 `node ./server.mjs`。
         // 必须结合应用包内工作目录判断，不能吞掉用户项目的同名 Node 服务。
         if isCodexAppToolsServer(normalized, workingDirectory: workingDirectory) { return true }
+        // ChatCut Desktop 为 Codex 启动的 MCP bridge 会被进程采样器压缩成
+        // `ChatCut server.js`。结合应用包内可执行路径识别，避免误伤普通
+        // Node `server.js` 或其他同名脚本。
+        if isChatCutMCPServer(command, normalizedCommand: normalized, executablePath: executablePath) { return true }
         if normalized.contains("node_repl") || normalized.contains("skycomputeruseclient") { return true }
         if normalized.contains("playwright-mcp") || normalized.contains("xcodebuildmcp") { return true }
         if normalized.contains("extension-host") || normalized.contains("bare-modifier-monitor") || normalized.contains("chrome_crashpad_handler") { return true }
@@ -1022,7 +1030,11 @@ class ProcessMonitor: ObservableObject {
     }
 
     private static func isNoiseProcess(_ command: String, pid: Int32) -> Bool {
-        isNoise(command, workingDirectory: ProcessSnapshotter.currentWorkingDirectory(of: pid))
+        isNoise(
+            command,
+            workingDirectory: ProcessSnapshotter.currentWorkingDirectory(of: pid),
+            executablePath: ProcessSnapshotter.executablePath(of: pid)
+        )
     }
 
     private static func normalizedForNoiseMatching(_ command: String) -> String {
@@ -1131,6 +1143,29 @@ class ProcessMonitor: ObservableObject {
 
         let bundledDirectorySuffix = ".app/contents/resources/plugins/openai-bundled/plugins/codex-app-tools"
         return workingDirectory.lowercased().hasSuffix(bundledDirectorySuffix)
+    }
+
+    private static func isChatCutMCPServer(
+        _ rawCommand: String,
+        normalizedCommand: String,
+        executablePath: String?
+    ) -> Bool {
+        let tokens = normalizedCommand
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+        guard tokens.count >= 2, tokens[0] == "chatcut", tokens[1] == "server.js" else {
+            return false
+        }
+
+        let bundledExecutableSuffix = "/chatcut.app/contents/macos/chatcut"
+        if executablePath?.lowercased().hasSuffix(bundledExecutableSuffix) == true {
+            return true
+        }
+
+        // Hook 事件可能保留完整 argv，但没有 PID 可供读取 executablePath。
+        let lowerRawCommand = rawCommand.lowercased()
+        return lowerRawCommand.contains(bundledExecutableSuffix)
+            && lowerRawCommand.contains("/chatcut.app/contents/resources/app.asar/out/main/mcp/server.js")
     }
 
     private static func executableTokenName(_ token: String) -> String {

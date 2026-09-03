@@ -202,4 +202,32 @@ final class ProcessMonitorNoiseTests: XCTestCase {
             )
         }
     }
+
+    func testFiltersChatCutMCPServer() {
+        let executablePath = "/Applications/ChatCut.app/Contents/MacOS/ChatCut"
+        let fullCommand = "\(executablePath) /Applications/ChatCut.app/Contents/Resources/app.asar/out/main/mcp/server.js"
+
+        XCTAssertTrue(ProcessMonitor.isNoise(fullCommand))
+        XCTAssertTrue(
+            ProcessMonitor.isNoise("ChatCut server.js", executablePath: executablePath),
+            "Expected the process snapshot's two-token ChatCut MCP form to be filtered"
+        )
+    }
+
+    func testKeepsUnrelatedServerJSCommands() {
+        XCTAssertFalse(ProcessMonitor.isNoise("node server.js"))
+        XCTAssertFalse(ProcessMonitor.isNoise("ChatCut server.js"))
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "ChatCut server.js",
+                executablePath: "/Users/test/bin/ChatCut"
+            )
+        )
+        XCTAssertFalse(
+            ProcessMonitor.isNoise(
+                "ChatCut project.chatcut",
+                executablePath: "/Applications/ChatCut.app/Contents/MacOS/ChatCut"
+            )
+        )
+    }
 }
