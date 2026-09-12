@@ -1016,6 +1016,9 @@ class ProcessMonitor: ObservableObject {
             executablePath: executablePath,
             processArguments: processArguments
         ) { return true }
+        // Unified Computer Use 的轻量 REPL 入口会以 `node cua-repl.mjs`
+        // 出现在采样器中；它是后台桥接进程，不应显示为用户命令。
+        if isCuaREPLLauncher(normalized) { return true }
         // ChatGPT/Codex 为 artifact template picker 启动的 bundled Node 服务。
         // 它的 cwd 是当前用户项目，不能复用 Codex App Tools 的 cwd 判定；
         // 必须依赖完整 argv 中的 app bundle 脚本路径。
@@ -1226,6 +1229,13 @@ class ProcessMonitor: ObservableObject {
             return false
         }
         return executablePath.hasSuffix(".app/contents/resources/cua_node/bin/node")
+    }
+
+    private static func isCuaREPLLauncher(_ normalizedCommand: String) -> Bool {
+        let tokens = normalizedCommand
+            .split(whereSeparator: { $0.isWhitespace })
+            .map(String.init)
+        return tokens.count == 2 && tokens[0] == "node" && tokens[1] == "cua-repl.mjs"
     }
 
     private static func isArtifactTemplatePickerServer(

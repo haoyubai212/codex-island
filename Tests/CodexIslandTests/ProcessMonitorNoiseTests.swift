@@ -278,6 +278,16 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         )
     }
 
+    func testFiltersCuaREPLLauncher() {
+        XCTAssertTrue(ProcessMonitor.isNoise("node cua-repl.mjs"))
+        XCTAssertTrue(ProcessMonitor.isNoise("env node cua-repl.mjs"))
+    }
+
+    func testKeepsUnrelatedCuaREPLScript() {
+        XCTAssertFalse(ProcessMonitor.isNoise("node /Users/test/project/cua-repl.mjs"))
+        XCTAssertFalse(ProcessMonitor.isNoise("node cua-repl.js"))
+    }
+
     func testFiltersBundledArtifactTemplatePickerServer() {
         let chatGPTNode = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
         let chatGPTScript = "/Applications/ChatGPT.app/Contents/Resources/artifact-template-picker/server.mjs"
