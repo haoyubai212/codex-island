@@ -1019,6 +1019,9 @@ class ProcessMonitor: ObservableObject {
         // Unified Computer Use 的轻量 REPL 入口会以 `node cua-repl.mjs`
         // 出现在采样器中；它是后台桥接进程，不应显示为用户命令。
         if isCuaREPLLauncher(normalized) { return true }
+        // ChatGPT/Codex sandbox 的 Node 隔离宿主；kernel 与 trusted-worker
+        // 是 node_repl 的内部执行进程，不应显示为用户命令。
+        if isCodexSandboxWorker(normalized) { return true }
         // ChatGPT/Codex 为 artifact template picker 启动的 bundled Node 服务。
         // 它的 cwd 是当前用户项目，不能复用 Codex App Tools 的 cwd 判定；
         // 必须依赖完整 argv 中的 app bundle 脚本路径。
@@ -1189,8 +1192,20 @@ class ProcessMonitor: ObservableObject {
             return false
         }
 
+        let normalizedDirectory = workingDirectory
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .lowercased()
         let bundledDirectorySuffix = ".app/contents/resources/plugins/openai-bundled/plugins/codex-app-tools"
-        return workingDirectory.lowercased().hasSuffix(bundledDirectorySuffix)
+        if normalizedDirectory.hasSuffix(bundledDirectorySuffix) { return true }
+
+        // Newer Codex builds install bundled plugins in the versioned user cache:
+        // ~/.codex/plugins/cache/openai-bundled/codex-app-tools/<version>
+        let cachedPluginMarker = "/.codex/plugins/cache/openai-bundled/codex-app-tools/"
+        guard let markerRange = normalizedDirectory.range(of: cachedPluginMarker) else {
+            return false
+        }
+        let version = normalizedDirectory[markerRange.upperBound...]
+        return !version.isEmpty && !version.contains("/")
     }
 
     private static func isUnifiedComputerUseLauncher(
@@ -1236,6 +1251,15 @@ class ProcessMonitor: ObservableObject {
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
         return tokens.count == 2 && tokens[0] == "node" && tokens[1] == "cua-repl.mjs"
+    }
+
+    private static func isCodexSandboxWorker(_ normalizedCommand: String) -> Bool {
+        guard normalizedCommand.hasPrefix("node "),
+              normalizedCommand.contains("--experimental-vm-modules") else {
+            return false
+        }
+        return normalizedCommand.contains(" kernel.js") ||
+            normalizedCommand.contains(" trusted-worker.js")
     }
 
     private static func isArtifactTemplatePickerServer(

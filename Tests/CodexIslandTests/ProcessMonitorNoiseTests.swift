@@ -188,6 +188,8 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         let workingDirectories = [
             "/Applications/ChatGPT.app/Contents/Resources/plugins/openai-bundled/plugins/codex-app-tools",
             "/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/codex-app-tools",
+            "/Users/test/.codex/plugins/cache/openai-bundled/codex-app-tools/0.1.4",
+            "/Users/test/.codex/plugins/cache/openai-bundled/codex-app-tools/26.912.10001/",
         ]
         let commands = [
             "node ./server.mjs",
@@ -221,6 +223,10 @@ final class ProcessMonitorNoiseTests: XCTestCase {
             XCTAssertFalse(
                 ProcessMonitor.isNoise(command, workingDirectory: "/Users/test/plugins/openai-bundled/plugins/codex-app-tools"),
                 "Expected non-app-bundle command: \(command)"
+            )
+            XCTAssertFalse(
+                ProcessMonitor.isNoise(command, workingDirectory: "/Users/test/.codex/plugins/cache/openai-bundled/codex-app-tools/0.1.4/examples"),
+                "Expected nested user command to remain visible: \(command)"
             )
         }
     }
@@ -286,6 +292,16 @@ final class ProcessMonitorNoiseTests: XCTestCase {
     func testKeepsUnrelatedCuaREPLScript() {
         XCTAssertFalse(ProcessMonitor.isNoise("node /Users/test/project/cua-repl.mjs"))
         XCTAssertFalse(ProcessMonitor.isNoise("node cua-repl.js"))
+    }
+
+    func testFiltersCodexSandboxWorkers() {
+        XCTAssertTrue(ProcessMonitor.isNoise("node --experimental-vm-modules kernel.js --session-id abc"))
+        XCTAssertTrue(ProcessMonitor.isNoise("node --experimental-vm-modules trusted-worker.js /Users/test/project"))
+    }
+
+    func testKeepsUnrelatedExperimentalNodeScripts() {
+        XCTAssertFalse(ProcessMonitor.isNoise("node --experimental-vm-modules test-worker.js"))
+        XCTAssertFalse(ProcessMonitor.isNoise("node kernel.js"))
     }
 
     func testFiltersBundledArtifactTemplatePickerServer() {
