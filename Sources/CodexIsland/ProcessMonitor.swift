@@ -1007,6 +1007,16 @@ class ProcessMonitor: ObservableObject {
         // Codex 桌面端 bundled app tools 使用通用命令 `node ./server.mjs`。
         // 必须结合应用包内工作目录判断，不能吞掉用户项目的同名 Node 服务。
         if isCodexAppToolsServer(normalized, workingDirectory: workingDirectory) { return true }
+        // Code Review 启动后会 chdir 到 ~/.codex/code-review-plugin。
+        // 同时确认使用应用自带 Node，避免隐藏用户项目的同名服务。
+        if isCodexCodeReviewServer(
+            normalized,
+            workingDirectory: workingDirectory,
+            executablePath: executablePath
+        ) { return true }
+        // Security MCP 常驻服务的展示命令只有 `node server.mjs --stdio`。
+        // 用真实入口路径识别，不把普通项目的 stdio 服务一并隐藏。
+        if isCodexSecurityServer(normalized, processArguments: processArguments) { return true }
         // Unified Computer Use 会为 browser / computer 服务启动持久化 Node REPL，
         // 进程展示层只剩 `node launch.mjs`。优先用完整 argv 识别 bundled 脚本路径，
         // 仅在 argv 不可用时才结合 ChatGPT/Codex 自带 cua_node 路径兜底。
@@ -1205,6 +1215,45 @@ class ProcessMonitor: ObservableObject {
             return false
         }
         let version = normalizedDirectory[markerRange.upperBound...]
+        return !version.isEmpty && !version.contains("/")
+    }
+
+    private static func isCodexCodeReviewServer(
+        _ command: String,
+        workingDirectory: String?,
+        executablePath: String?
+    ) -> Bool {
+        let tokens = command
+            .split(whereSeparator: { $0.isWhitespace })
+            .map { executableTokenName(String($0)) }
+        guard tokens.count >= 2, tokens[0] == "node", tokens[1] == "server.mjs",
+              let workingDirectory, let executablePath else { return false }
+
+        let directory = workingDirectory
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            .lowercased()
+        guard directory.hasSuffix("/.codex/code-review-plugin") else { return false }
+
+        let nodePath = executablePath.lowercased()
+        return nodePath.hasSuffix("/chatgpt.app/contents/resources/cua_node/bin/node") ||
+            nodePath.hasSuffix("/codex.app/contents/resources/cua_node/bin/node")
+    }
+
+    private static func isCodexSecurityServer(
+        _ normalizedCommand: String,
+        processArguments: [String]?
+    ) -> Bool {
+        let tokens = processArguments ?? normalizedCommand.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard tokens.count >= 2,
+              executableTokenName(tokens[0].lowercased()) == "node" else { return false }
+
+        // 实际 launcher 使用 scripts/../mcp/server.mjs；先做词法路径规范化。
+        let scriptPath = (tokens[1] as NSString).standardizingPath.lowercased()
+        let marker = "/.codex/plugins/cache/openai-curated-remote/codex-security/"
+        let suffix = "/mcp/server.mjs"
+        guard let range = scriptPath.range(of: marker), scriptPath.hasSuffix(suffix) else { return false }
+        let relativePath = scriptPath[range.upperBound...]
+        let version = relativePath.dropLast(suffix.count)
         return !version.isEmpty && !version.contains("/")
     }
 

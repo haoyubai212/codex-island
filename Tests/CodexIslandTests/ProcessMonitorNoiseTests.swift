@@ -207,6 +207,79 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         }
     }
 
+    func testFiltersCodeReviewServerAfterWorkingDirectoryChange() {
+        let nodePaths = [
+            "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node",
+            "/Applications/Codex.app/Contents/Resources/cua_node/bin/node",
+        ]
+        for nodePath in nodePaths {
+            for command in ["node ./server.mjs", "env node ./server.mjs", "node server.mjs"] {
+                XCTAssertTrue(ProcessMonitor.isNoise(
+                    command,
+                    workingDirectory: "/Users/test/.codex/code-review-plugin/",
+                    executablePath: nodePath
+                ))
+            }
+        }
+    }
+
+    func testKeepsUserServersAndDiagnosticsNearCodeReviewDirectory() {
+        let directory = "/Users/test/.codex/code-review-plugin"
+        let bundledNode = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        XCTAssertFalse(ProcessMonitor.isNoise("node ./server.mjs", workingDirectory: directory))
+        XCTAssertFalse(ProcessMonitor.isNoise(
+            "node ./server.mjs", workingDirectory: directory, executablePath: "/opt/homebrew/bin/node"
+        ))
+        for cwd in ["/Users/test/project", directory + "/examples", directory + "-other"] {
+            XCTAssertFalse(ProcessMonitor.isNoise(
+                "node ./server.mjs", workingDirectory: cwd, executablePath: bundledNode
+            ))
+        }
+        for command in ["node app.js", "rg server.mjs", "echo node server.mjs"] {
+            XCTAssertFalse(ProcessMonitor.isNoise(
+                command, workingDirectory: directory, executablePath: bundledNode
+            ))
+        }
+    }
+
+    func testFiltersCodexSecurityServerUsingActualProcessArguments() {
+        let node = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        let root = "/Users/test/.codex/plugins/cache/openai-curated-remote/codex-security/"
+        for entry in ["0.1.32/scripts/../mcp/server.mjs", "0.2.0/mcp/server.mjs"] {
+            XCTAssertTrue(ProcessMonitor.isNoise(
+                "node server.mjs --stdio",
+                executablePath: node,
+                processArguments: [node, root + entry, "--stdio"]
+            ))
+        }
+        for prefix in ["node ", "env node ", "arch -arm64 node "] {
+            XCTAssertTrue(ProcessMonitor.isNoise(prefix + root + "0.1.32/mcp/server.mjs --stdio"))
+        }
+    }
+
+    func testKeepsOrdinaryStdioServersAndSimilarPluginPaths() {
+        let node = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        let root = "/Users/test/.codex/plugins/cache/openai-curated-remote/codex-security/"
+        for script in [
+            "/Users/test/project/server.mjs",
+            root + "0.1.32/examples/server.mjs",
+            root + "0.1.32/mcp/user-server.mjs",
+            root + "0.1.32/nested/mcp/server.mjs",
+            root + "../another-plugin/0.1.32/mcp/server.mjs",
+        ] {
+            XCTAssertFalse(ProcessMonitor.isNoise(
+                "node server.mjs --stdio",
+                executablePath: node,
+                processArguments: [node, script, "--stdio"]
+            ))
+        }
+        XCTAssertFalse(ProcessMonitor.isNoise("node server.mjs --stdio", executablePath: node))
+        XCTAssertFalse(ProcessMonitor.isNoise(
+            "node server.mjs --stdio",
+            processArguments: [node, "/Users/test/project/server.mjs", root + "0.1.32/mcp/server.mjs"]
+        ))
+    }
+
     func testKeepsUserNodeServerCommands() {
         let commands = [
             "node ./server.mjs",
