@@ -252,7 +252,7 @@ class ProcessMonitor: ObservableObject {
     enum CommandCategory: String, Equatable {
         case building, testing, serving, gitOp, searching
         case reading, writing, installing, managing, executing
-        case collaboration, blender, networking, remote, browsing
+        case collaboration, claude, blender, networking, remote, browsing
 
         var icon: String {
             switch self {
@@ -267,6 +267,7 @@ class ProcessMonitor: ObservableObject {
             case .managing:   return "gearshape.fill"
             case .executing:  return "terminal.fill"
             case .collaboration: return "person.2.fill"
+            case .claude:    return "clawd"
             case .blender:    return "cube.fill"
             case .networking: return "arrow.up.arrow.down.circle.fill"
             case .remote:     return "desktopcomputer"
@@ -287,6 +288,7 @@ class ProcessMonitor: ObservableObject {
             case .managing:   return .gray
             case .executing:  return .indigo
             case .collaboration: return .pink
+            case .claude:    return .orange
             case .blender:    return Color(red: 0.91, green: 0.49, blue: 0.05)  // Blender 橙 #E87D0D
             case .networking: return .teal
             case .remote:     return .red
@@ -307,6 +309,7 @@ class ProcessMonitor: ObservableObject {
             case .managing:   return "管理进程"
             case .executing:  return "执行命令"
             case .collaboration: return "小组会"
+            case .claude:    return "Claude"
             case .blender:    return "Blender"
             case .networking: return "网络请求"
             case .remote:     return "远程连接"
@@ -1395,6 +1398,10 @@ class ProcessMonitor: ObservableObject {
             .first
             .map(String.init)
 
+        // 先识别 Claude 可执行命令，避免提示词中的命令文本影响分类。
+        if executable == "claude" {
+            return .claude
+        }
         // Agent 协作命令（优先匹配）
         if executable == "agy" || lower.contains("acpx") || lower.contains("acp ") {
             return .collaboration

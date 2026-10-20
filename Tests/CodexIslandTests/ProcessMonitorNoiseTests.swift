@@ -2,6 +2,27 @@ import XCTest
 @testable import CodexIslandApp
 
 final class ProcessMonitorNoiseTests: XCTestCase {
+    func testCategorizesClaudeBeforePromptContents() {
+        let commands = [
+            "claude",
+            "claude -p 'Use git status, curl and agy to review'",
+            "/Users/haoyu/.local/bin/claude --resume session",
+            "env CLAUDE_MODE=local claude -p 'npm run build'",
+            "command claude --version",
+            "arch -arm64 claude -p 'Find acpx commands'",
+        ]
+        for command in commands {
+            XCTAssertEqual(ProcessMonitor.categorizeCommand(command), .claude, command)
+        }
+        XCTAssertEqual(ProcessMonitor.CommandCategory.claude.icon, "clawd")
+    }
+
+    func testClaudeMentionsKeepTheirCommandCategory() {
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("rg -n claude Sources"), .searching)
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("cat claude.md"), .reading)
+        XCTAssertEqual(ProcessMonitor.categorizeCommand("echo claude"), .executing)
+    }
+
     func testCategorizesAgyLikeAcpxCollaboration() {
         let commands = [
             "agy -p Resume the same camper RV job",

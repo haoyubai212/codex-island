@@ -118,15 +118,11 @@ struct NotchContentView: View {
 
         switch pres {
         case .active(let cat, _):
-            Image(systemName: cat.icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(cat.color)
+            CommandIcon(icon: cat.icon, color: cat.color, size: 11)
             PulsingDot(color: cat.color)
 
         case .recent(let cat, _):
-            Image(systemName: cat.icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(cat.color)
+            CommandIcon(icon: cat.icon, color: cat.color, size: 11)
                 .transition(.scale.combined(with: .opacity))
 
         case .burst:
@@ -140,9 +136,7 @@ struct NotchContentView: View {
                 CodexLogoIcon(size: 14)
                 PulsingDot(color: codexAccentColor)
             default:
-                Image(systemName: state.icon)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(state.color)
+                CommandIcon(icon: state.icon, color: state.color, size: 11)
                 if state.isActive {
                     PulsingDot(color: state.color)
                 }
@@ -397,9 +391,7 @@ struct NotchContentView: View {
         if case .thinking = statusManager.workState {
             CodexLogoIcon(size: 16)
         } else {
-            Image(systemName: statusManager.workState.icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(statusManager.workState.color)
+            CommandIcon(icon: statusManager.workState.icon, color: statusManager.workState.color, size: 14)
         }
     }
 
@@ -786,9 +778,7 @@ struct ToolCallRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: record.icon)
-                .font(.system(size: 8))
-                .foregroundColor(record.color)
+            CommandIcon(icon: record.icon, color: record.color, size: 8, weight: .regular)
                 .frame(width: 12)
 
             Text(record.toolName)
