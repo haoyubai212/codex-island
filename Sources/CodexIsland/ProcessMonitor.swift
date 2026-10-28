@@ -1029,9 +1029,9 @@ class ProcessMonitor: ObservableObject {
             executablePath: executablePath,
             processArguments: processArguments
         ) { return true }
-        // Unified Computer Use 的轻量 REPL 入口会以 `node cua-repl.mjs`
-        // 出现在采样器中；它是后台桥接进程，不应显示为用户命令。
-        if isCuaREPLLauncher(normalized) { return true }
+        // CUA REPL 新版通过 --import 加载 browser access 模块；展示命令会
+        // 压缩 REPL 入口路径，所以用完整 argv 同时核对加载器与 bundled 入口。
+        if isCuaREPLLauncher(normalized, processArguments: processArguments) { return true }
         // ChatGPT/Codex sandbox 的 Node 隔离宿主；kernel 与 trusted-worker
         // 是 node_repl 的内部执行进程，不应显示为用户命令。
         if isCodexSandboxWorker(normalized) { return true }
@@ -1298,11 +1298,48 @@ class ProcessMonitor: ObservableObject {
         return executablePath.hasSuffix(".app/contents/resources/cua_node/bin/node")
     }
 
-    private static func isCuaREPLLauncher(_ normalizedCommand: String) -> Bool {
-        let tokens = normalizedCommand
+    private static func isCuaREPLLauncher(
+        _ normalizedCommand: String,
+        processArguments: [String]?
+    ) -> Bool {
+        let tokens = processArguments ?? normalizedCommand
             .split(whereSeparator: { $0.isWhitespace })
             .map(String.init)
-        return tokens.count == 2 && tokens[0] == "node" && tokens[1] == "cua-repl.mjs"
+        guard let first = tokens.first,
+              executableTokenName(first.lowercased()) == "node" else { return false }
+
+        // 保留旧版启动方式；完整 argv 可用时不把用户同名脚本压成 basename。
+        if tokens.count == 2 && tokens[1] == "cua-repl.mjs" { return true }
+
+        let importSpecifier: String
+        let entryPath: String
+        if tokens.count == 4 && tokens[1] == "--import" {
+            importSpecifier = tokens[2]
+            entryPath = tokens[3]
+        } else if tokens.count == 3 && tokens[1].hasPrefix("--import=") {
+            importSpecifier = String(tokens[1].dropFirst("--import=".count))
+            entryPath = tokens[2]
+        } else {
+            return false
+        }
+
+        let importPath: String
+        if let url = URL(string: importSpecifier), url.isFileURL {
+            guard url.host == nil || url.host == "" || url.host == "localhost" else { return false }
+            importPath = url.path
+        } else {
+            importPath = importSpecifier
+        }
+        let loaderPath = (importPath as NSString).standardizingPath.lowercased()
+        let marker = "/.codex/plugins/cache/openai-bundled/unified-computer-use/"
+        let suffix = "/require-browser-access.mjs"
+        guard let range = loaderPath.range(of: marker), loaderPath.hasSuffix(suffix) else { return false }
+        let version = loaderPath[range.upperBound...].dropLast(suffix.count)
+        guard !version.isEmpty && !version.contains("/") else { return false }
+
+        let entry = (entryPath as NSString).standardizingPath.lowercased()
+        let replSuffix = "/contents/resources/cua_node/lib/node_modules/@oai/cua-repl/bin/cua-repl.mjs"
+        return entry.hasSuffix("/chatgpt.app" + replSuffix) || entry.hasSuffix("/codex.app" + replSuffix)
     }
 
     private static func isCodexSandboxWorker(_ normalizedCommand: String) -> Bool {

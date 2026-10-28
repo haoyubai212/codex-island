@@ -388,6 +388,61 @@ final class ProcessMonitorNoiseTests: XCTestCase {
         XCTAssertFalse(ProcessMonitor.isNoise("node cua-repl.js"))
     }
 
+    func testFiltersCuaREPLWithBrowserAccessImport() {
+        let loader = "/Users/test/.codex/plugins/cache/openai-bundled/unified-computer-use/26.1023.50603/require-browser-access.mjs"
+        for app in ["ChatGPT", "Codex"] {
+            let node = "/Applications/\(app).app/Contents/Resources/cua_node/bin/node"
+            let entry = "/Applications/\(app).app/Contents/Resources/cua_node/lib/node_modules/@oai/cua-repl/bin/cua-repl.mjs"
+            let variants = [
+                [node, "--import", "file://" + loader, entry],
+                [node, "--import=file://" + loader, entry],
+                [node, "--import", loader, entry],
+                [node, "--import", "file://" + loader.replacingOccurrences(of: "/test/", with: "/test%20user/"), entry],
+            ]
+            for argv in variants {
+                // Match ProcessSnapshotter's first-five-argv, absolute-path-to-basename display.
+                let display = argv.prefix(5).map {
+                    $0.hasPrefix("/") ? ($0 as NSString).lastPathComponent : $0
+                }.joined(separator: " ")
+                XCTAssertTrue(ProcessMonitor.isNoise(
+                    display, executablePath: node, processArguments: argv
+                ), display)
+                XCTAssertTrue(ProcessMonitor.isNoise(argv.joined(separator: " ")), display)
+            }
+        }
+    }
+
+    func testKeepsUserCommandsWithBrowserAccessImport() {
+        let node = "/Applications/ChatGPT.app/Contents/Resources/cua_node/bin/node"
+        let loader = "/Users/test/.codex/plugins/cache/openai-bundled/unified-computer-use/26.1023.50603/require-browser-access.mjs"
+        let entry = "/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/@oai/cua-repl/bin/cua-repl.mjs"
+        let variants = [
+            [node, "--import", "file://" + loader, "/Users/test/project/cua-repl.mjs"],
+            [node, "--import", "file:///Users/test/project/require-browser-access.mjs", entry],
+            [node, "--import", "file://" + loader, "/Users/test/project/cua-repl/bin/cua-repl.mjs"],
+            [node, "--import", "file://" + loader.replacingOccurrences(of: "/26.1023.50603/", with: "/26.1023.50603/examples/"), entry],
+            [node, "--import", "file://" + loader.replacingOccurrences(of: "require-browser-access.mjs", with: "other.mjs"), entry],
+            [node, "/Users/test/project/inspect.mjs", "--import", "file://" + loader, entry],
+            ["rg", "--import", "file://" + loader, entry],
+        ]
+        for argv in variants {
+            let display = argv.prefix(5).map {
+                $0.hasPrefix("/") ? ($0 as NSString).lastPathComponent : $0
+            }.joined(separator: " ")
+            XCTAssertFalse(ProcessMonitor.isNoise(
+                display, executablePath: node, processArguments: argv
+            ), display)
+            XCTAssertFalse(ProcessMonitor.isNoise(argv.joined(separator: " ")), display)
+        }
+        XCTAssertFalse(ProcessMonitor.isNoise(
+            "node --import file://" + loader + " cua-repl.mjs", executablePath: node
+        ), "A collapsed entry without full argv is insufficient evidence")
+        XCTAssertFalse(ProcessMonitor.isNoise(
+            "node cua-repl.mjs", executablePath: node,
+            processArguments: [node, "/Users/test/project/cua-repl.mjs"]
+        ))
+    }
+
     func testFiltersCodexSandboxWorkers() {
         XCTAssertTrue(ProcessMonitor.isNoise("node --experimental-vm-modules kernel.js --session-id abc"))
         XCTAssertTrue(ProcessMonitor.isNoise("node --experimental-vm-modules trusted-worker.js /Users/test/project"))
